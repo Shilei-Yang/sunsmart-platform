@@ -1,0 +1,6 @@
+Hi guys, I’ve created a database folder in the project. 
+This folder is for storing all database-related files for 
+our platform. You can put things like SQL scripts, schema 
+files, sample data, or any other database resources here. 
+This will also help us keep track of database changes 
+through Git and make collaboration easier.
