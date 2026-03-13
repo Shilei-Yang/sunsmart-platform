@@ -16,8 +16,13 @@ const infoTab = ref('uv-impacts')
   <div class="homepage">
     <header class="homepage__header">
       <div class="homepage__header-inner">
-        <h1 class="homepage__title">Sun Smart Platform</h1>
-        <p class="homepage__tagline">UV protection awareness</p>
+        <div class="homepage__brand">
+          <span class="homepage__brand-mark">UVibe</span>
+          <div class="homepage__brand-text">
+            <h1 class="homepage__title">Sun Smart UV Dashboard</h1>
+            <p class="homepage__tagline">Live UV insights to help you plan safer time in the sun.</p>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -122,10 +127,37 @@ const infoTab = ref('uv-impacts')
 .homepage__header-inner {
   max-width: 1280px;
   margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.homepage__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.homepage__brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 20%, #facc15, #f97316 45%, #0ea5e9 95%);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+.homepage__brand-text {
+  display: flex;
+  flex-direction: column;
 }
 .homepage__title {
   margin: 0;
-  font-size: 1.625rem;
+  font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: #0f172a;
@@ -228,7 +260,7 @@ const infoTab = ref('uv-impacts')
 
 @media (min-width: 900px) {
   .homepage__title {
-    font-size: 1.875rem;
+    font-size: 2.1rem;
   }
   .homepage__main {
     padding: 2.5rem 2rem 3.5rem;

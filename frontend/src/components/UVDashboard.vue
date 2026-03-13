@@ -94,7 +94,7 @@ onMounted(startUvFlow)
 
 <template>
   <section class="hero-dashboard">
-    <!-- Top bar: search + user avatar -->
+    <!-- Top bar: search -->
     <header class="hero-dashboard__top">
       <div class="hero-dashboard__search-wrap">
         <span class="hero-dashboard__search-icon" aria-hidden="true">🔍</span>
@@ -106,7 +106,6 @@ onMounted(startUvFlow)
           aria-label="Search location"
         />
       </div>
-      <div class="hero-dashboard__avatar" aria-hidden="true">M</div>
     </header>
 
     <!-- Location as main heading + subtitle -->
@@ -199,7 +198,7 @@ onMounted(startUvFlow)
 .hero-dashboard__top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
@@ -207,7 +206,7 @@ onMounted(startUvFlow)
   display: flex;
   align-items: center;
   flex: 1;
-  max-width: 320px;
+  max-width: 720px;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 12px;
@@ -223,20 +222,6 @@ onMounted(startUvFlow)
   color: #1e293b;
   outline: none;
 }
-.hero-dashboard__avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(30, 41, 59, 0.85);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 1rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
 .hero-dashboard__location-block {
   margin-bottom: 1rem;
 }
