@@ -90,8 +90,8 @@ def get_uv():
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
-    except requests.exceptions.RequestException:
-        return jsonify({"error": "Unable to fetch UV data from Open-Meteo"}), 500
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Unable to fetch UV data from Open-Meteo: {str(e)}"}), 500
     except (ValueError, KeyError):
         return jsonify({"error": "Invalid response from UV service"}), 500
 
