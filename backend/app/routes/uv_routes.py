@@ -1,9 +1,5 @@
 """
-<<<<<<< HEAD
-UV routes: fetch UV index from Open-Meteo and return risk level and message.
-=======
 UV routes: fetch UV index from Open-Meteo (no API key) and return risk level and message.
->>>>>>> 9160498 (Refactor UV routes and enhance frontend components for UV awareness. Updated backend to fetch UV data from Open-Meteo API, improved risk level mapping, and added detailed alert messages. Redesigned frontend layout with new components for UV dashboard, impacts, skin types, and max UV graph, aligning with prototype specifications.)
 """
 import requests
 from datetime import date, timedelta
@@ -11,24 +7,11 @@ from flask import Blueprint, jsonify, request
 
 uv_bp = Blueprint("uv_bp", __name__)
 
-<<<<<<< HEAD
-# Open-Meteo forecast API (no API key required)
-=======
->>>>>>> 9160498 (Refactor UV routes and enhance frontend components for UV awareness. Updated backend to fetch UV data from Open-Meteo API, improved risk level mapping, and added detailed alert messages. Redesigned frontend layout with new components for UV dashboard, impacts, skin types, and max UV graph, aligning with prototype specifications.)
 OPEN_METEO_URL = (
     "https://api.open-meteo.com/v1/forecast"
     "?latitude={lat}&longitude={lon}"
     "&daily=uv_index_max,uv_index_clear_sky_max&timezone=auto"
 )
-<<<<<<< HEAD
-
-
-def uv_index_to_risk(uv_index):
-    """
-    Map UV index value to risk_level, color, and human-readable message.
-    Uses the exact Epic 1 mapping for consistency with frontend display.
-    """
-=======
 
 OPEN_METEO_ARCHIVE_URL = (
     "https://archive-api.open-meteo.com/v1/archive"
@@ -39,7 +22,6 @@ OPEN_METEO_ARCHIVE_URL = (
 
 def uv_index_to_risk(uv_index):
     """Map UV index to risk_level, color, and message for frontend display."""
->>>>>>> 9160498 (Refactor UV routes and enhance frontend components for UV awareness. Updated backend to fetch UV data from Open-Meteo API, improved risk level mapping, and added detailed alert messages. Redesigned frontend layout with new components for UV dashboard, impacts, skin types, and max UV graph, aligning with prototype specifications.)
     uv = float(uv_index)
     if uv <= 2:
         return {
@@ -77,10 +59,6 @@ def uv_index_to_risk(uv_index):
                 "Use SPF 50+ sunscreen, wear protective clothing, and limit sun exposure."
             ),
         }
-<<<<<<< HEAD
-    # 11 or above
-=======
->>>>>>> 9160498 (Refactor UV routes and enhance frontend components for UV awareness. Updated backend to fetch UV data from Open-Meteo API, improved risk level mapping, and added detailed alert messages. Redesigned frontend layout with new components for UV dashboard, impacts, skin types, and max UV graph, aligning with prototype specifications.)
     return {
         "risk_level": "Extreme",
         "color": "purple",
@@ -93,15 +71,7 @@ def uv_index_to_risk(uv_index):
 
 @uv_bp.route("/api/uv", methods=["GET"])
 def get_uv():
-<<<<<<< HEAD
-    """
-    GET /api/uv?lat=<latitude>&lon=<longitude>
-    Fetches UV data from Open-Meteo for the given coordinates, maps to risk level,
-    and returns a JSON payload for the frontend.
-    """
-=======
     """GET /api/uv?lat=&lon= — Fetch UV from Open-Meteo, return risk and message."""
->>>>>>> 9160498 (Refactor UV routes and enhance frontend components for UV awareness. Updated backend to fetch UV data from Open-Meteo API, improved risk level mapping, and added detailed alert messages. Redesigned frontend layout with new components for UV dashboard, impacts, skin types, and max UV graph, aligning with prototype specifications.)
     lat = request.args.get("lat")
     lon = request.args.get("lon")
 
@@ -120,11 +90,7 @@ def get_uv():
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
-<<<<<<< HEAD
-    except requests.exceptions.RequestException as e:
-=======
     except requests.exceptions.RequestException:
->>>>>>> 9160498 (Refactor UV routes and enhance frontend components for UV awareness. Updated backend to fetch UV data from Open-Meteo API, improved risk level mapping, and added detailed alert messages. Redesigned frontend layout with new components for UV dashboard, impacts, skin types, and max UV graph, aligning with prototype specifications.)
         return jsonify({"error": "Unable to fetch UV data from Open-Meteo"}), 500
     except (ValueError, KeyError):
         return jsonify({"error": "Invalid response from UV service"}), 500
@@ -143,8 +109,6 @@ def get_uv():
 
     risk = uv_index_to_risk(uv_index_val)
 
-<<<<<<< HEAD
-=======
     # Build 7-day daily max UV for frontend max UV graph (bar chart)
     daily_max_list = []
     for i in range(min(7, len(times))):
@@ -179,7 +143,6 @@ def get_uv():
     except Exception:
         history_list = []
 
->>>>>>> 9160498 (Refactor UV routes and enhance frontend components for UV awareness. Updated backend to fetch UV data from Open-Meteo API, improved risk level mapping, and added detailed alert messages. Redesigned frontend layout with new components for UV dashboard, impacts, skin types, and max UV graph, aligning with prototype specifications.)
     return jsonify({
         "status": "success",
         "date": date_str,
@@ -190,9 +153,6 @@ def get_uv():
         "risk_level": risk["risk_level"],
         "color": risk["color"],
         "message": risk["message"],
-<<<<<<< HEAD
-=======
         "daily": daily_max_list,
         "history": history_list,
->>>>>>> 9160498 (Refactor UV routes and enhance frontend components for UV awareness. Updated backend to fetch UV data from Open-Meteo API, improved risk level mapping, and added detailed alert messages. Redesigned frontend layout with new components for UV dashboard, impacts, skin types, and max UV graph, aligning with prototype specifications.)
     }), 200
