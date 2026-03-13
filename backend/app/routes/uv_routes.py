@@ -1,136 +1,124 @@
-import os
+"""
+UV routes: fetch UV index from Open-Meteo and return risk level and message.
+"""
 import requests
 from flask import Blueprint, jsonify, request
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Create a Blueprint for UV related routes
 uv_bp = Blueprint("uv_bp", __name__)
 
-
-def get_uv_level_and_color(uv_index):
-    """
-    Determine the UV risk level and corresponding color based on the UV index.
-    """
-    if uv_index <= 2:
-        return "Low", "green"
-    elif uv_index <= 5:
-        return "Moderate", "yellow"
-    elif uv_index <= 7:
-        return "High", "orange"
-    elif uv_index <= 10:
-        return "Very High", "red"
-    else:
-        return "Extreme", "purple"
+# Open-Meteo forecast API (no API key required)
+OPEN_METEO_URL = (
+    "https://api.open-meteo.com/v1/forecast"
+    "?latitude={lat}&longitude={lon}"
+    "&daily=uv_index_max,uv_index_clear_sky_max&timezone=auto"
+)
 
 
-def get_uv_alert(uv_index):
+def uv_index_to_risk(uv_index):
     """
-    Generate a human-readable alert message based on the UV index.
+    Map UV index value to risk_level, color, and human-readable message.
+    Uses the exact Epic 1 mapping for consistency with frontend display.
     """
-    if uv_index <= 2:
-        return "Low UV. Minimal protection required for most people."
-    elif uv_index <= 5:
-        return "Moderate UV. Use sunscreen if you are outside for long periods."
-    elif uv_index <= 7:
-        return "High UV. Your skin can be damaged quickly. Wear sunscreen and find shade."
-    elif uv_index <= 10:
-        return "Very High UV. Skin damage can happen very fast. Find shade now."
-    else:
-        return "Extreme UV. Avoid direct sunlight immediately and use full protection."
+    uv = float(uv_index)
+    if uv <= 2:
+        return {
+            "risk_level": "Low",
+            "color": "green",
+            "message": (
+                "UV levels are low. Minimal sun protection is required. "
+                "You can stay outdoors safely, but sunglasses are recommended."
+            ),
+        }
+    if uv <= 5:
+        return {
+            "risk_level": "Moderate",
+            "color": "yellow",
+            "message": (
+                "Moderate UV levels. Consider wearing sunscreen, sunglasses, and a hat "
+                "if you are outside for an extended period."
+            ),
+        }
+    if uv <= 7:
+        return {
+            "risk_level": "High",
+            "color": "orange",
+            "message": (
+                "High UV levels. Your skin may begin to burn within 20 to 30 minutes. "
+                "Apply SPF 30+ sunscreen and seek shade."
+            ),
+        }
+    if uv <= 10:
+        return {
+            "risk_level": "Very High",
+            "color": "red",
+            "message": (
+                "Very high UV levels. Your skin may burn within 10 to 20 minutes. "
+                "Use SPF 50+ sunscreen, wear protective clothing, and limit sun exposure."
+            ),
+        }
+    # 11 or above
+    return {
+        "risk_level": "Extreme",
+        "color": "purple",
+        "message": (
+            "Extreme UV levels. Skin damage can occur in less than 10 minutes. "
+            "Avoid direct sun exposure and stay in shade whenever possible."
+        ),
+    }
 
 
 @uv_bp.route("/api/uv", methods=["GET"])
 def get_uv():
     """
-    Endpoint to retrieve UV data for a given location.
-
-    Example request:
-    /api/uv?lat=-37.81&lon=144.96
+    GET /api/uv?lat=<latitude>&lon=<longitude>
+    Fetches UV data from Open-Meteo for the given coordinates, maps to risk level,
+    and returns a JSON payload for the frontend.
     """
-
-    # Get query parameters from the request
     lat = request.args.get("lat")
     lon = request.args.get("lon")
 
-    # Check if parameters are missing
-    if not lat or not lon:
-        return jsonify({
-            "error": "lat and lon are required"
-        }), 400
-
-    # Validate that parameters are numeric
-    try:
-        lat = float(lat)
-        lon = float(lon)
-    except ValueError:
-        return jsonify({
-            "error": "lat and lon must be valid numbers"
-        }), 400
-
-    # Read API key from environment variables
-    api_key = os.getenv("OPENWEATHER_API_KEY")
-
-    if not api_key:
-        return jsonify({
-            "error": "Missing OPENWEATHER_API_KEY in environment variables"
-        }), 500
+    if lat is None or lat == "" or lon is None or lon == "":
+        return jsonify({"error": "lat and lon are required"}), 400
 
     try:
-        # Call OpenWeather One Call API 3.0
-        url = "https://api.openweathermap.org/data/3.0/onecall"
-        params = {
-            "lat": lat,
-            "lon": lon,
-            "appid": api_key,
-            "exclude": "minutely,hourly,daily,alerts",
-            "units": "metric"
-        }
+        lat_f = float(lat)
+        lon_f = float(lon)
+    except (ValueError, TypeError):
+        return jsonify({"error": "lat and lon must be valid numbers"}), 400
 
-        response = requests.get(url, params=params, timeout=10)
+    url = OPEN_METEO_URL.format(lat=lat_f, lon=lon_f)
 
-        # Handle HTTP errors from the external API
-        if response.status_code != 200:
-            return jsonify({
-                "error": "Unable to fetch UV data from external API"
-            }), 502
-
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
         data = response.json()
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": "Unable to fetch UV data from Open-Meteo"}), 500
+    except (ValueError, KeyError):
+        return jsonify({"error": "Invalid response from UV service"}), 500
 
-        # OpenWeather returns UV index in current.uvi
-        current_data = data.get("current", {})
-        uv_index = current_data.get("uvi")
+    daily = data.get("daily") or {}
+    times = daily.get("time") or []
+    uv_max = daily.get("uv_index_max") or []
+    uv_clear = daily.get("uv_index_clear_sky_max") or []
 
-        if uv_index is None:
-            return jsonify({
-                "error": "No UV data available"
-            }), 404
+    if not times or not uv_max:
+        return jsonify({"error": "No daily UV data available for this location"}), 500
 
-        level, color = get_uv_level_and_color(uv_index)
-        alert = get_uv_alert(uv_index)
+    date_str = times[0]
+    uv_index_val = float(uv_max[0]) if uv_max[0] is not None else 0.0
+    uv_clear_val = float(uv_clear[0]) if (uv_clear and uv_clear[0] is not None) else uv_index_val
 
-        return jsonify({
-            "latitude": lat,
-            "longitude": lon,
-            "uv_index": uv_index,
-            "level": level,
-            "color": color,
-            "alert": alert
-        }), 200
+    risk = uv_index_to_risk(uv_index_val)
 
-    except requests.exceptions.Timeout:
-        return jsonify({
-            "error": "External API request timed out"
-        }), 504
-
-    except requests.exceptions.RequestException:
-        return jsonify({
-            "error": "Unable to fetch UV data"
-        }), 500
-
-    except Exception:
-        return jsonify({
-            "error": "Unexpected server error while processing UV data"
-        }), 500
+    return jsonify({
+        "status": "success",
+        "date": date_str,
+        "latitude": lat_f,
+        "longitude": lon_f,
+        "uv_index": uv_index_val,
+        "uv_index_clear_sky": uv_clear_val,
+        "risk_level": risk["risk_level"],
+        "color": risk["color"],
+        "message": risk["message"],
+    }), 200
