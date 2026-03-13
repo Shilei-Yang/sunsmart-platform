@@ -1,6 +1,8 @@
 """
 UV routes: fetch UV index from Open-Meteo (no API key) and return risk level and message.
+Includes a simple in-memory cache and basic rate-limit handling for robustness.
 """
+import time
 import requests
 from datetime import date, timedelta
 from flask import Blueprint, jsonify, request
@@ -19,6 +21,40 @@ OPEN_METEO_ARCHIVE_URL = (
     "&daily=uv_index_max&timezone=auto"
     "&start_date={start_date}&end_date={end_date}"
 )
+
+# Simple in-memory cache for UV responses.
+# Key: (rounded_lat, rounded_lon)
+# Value: {"timestamp": float, "payload": dict}
+UV_CACHE = {}
+CACHE_TTL_SECONDS = 600  # 10 minutes
+
+
+def _make_cache_key(lat: float, lon: float, places: int = 2):
+    """Build a cache key from rounded latitude/longitude."""
+    return (round(float(lat), places), round(float(lon), places))
+
+
+def _get_cached_uv(lat: float, lon: float):
+    """Return cached UV payload for location if still fresh, otherwise None."""
+    key = _make_cache_key(lat, lon)
+    entry = UV_CACHE.get(key)
+    if not entry:
+        return None
+    ts = entry.get("timestamp")
+    payload = entry.get("payload")
+    if ts is None or payload is None:
+        return None
+    if time.time() - ts > CACHE_TTL_SECONDS:
+        # Expired entry; remove and treat as cache miss.
+        UV_CACHE.pop(key, None)
+        return None
+    return payload
+
+
+def _set_cached_uv(lat: float, lon: float, payload: dict):
+    """Store UV payload in cache for the given location."""
+    key = _make_cache_key(lat, lon)
+    UV_CACHE[key] = {"timestamp": time.time(), "payload": payload}
 
 def uv_index_to_risk(uv_index):
     """Map UV index to risk_level, color, and message for frontend display."""
@@ -84,10 +120,25 @@ def get_uv():
     except (ValueError, TypeError):
         return jsonify({"error": "lat and lon must be valid numbers"}), 400
 
+    # If we have a fresh cached payload for this location, return it directly.
+    cached_payload = _get_cached_uv(lat_f, lon_f)
+    if cached_payload is not None:
+        return jsonify(cached_payload), 200
+
     url = OPEN_METEO_URL.format(lat=lat_f, lon=lon_f)
 
     try:
         response = requests.get(url, timeout=10)
+
+        # If Open-Meteo rate limits us (HTTP 429), try to fall back to cached data.
+        if response.status_code == 429:
+            cached_payload = _get_cached_uv(lat_f, lon_f)
+            if cached_payload is not None:
+                return jsonify(cached_payload), 200
+            return jsonify({
+                "error": "UV service is temporarily busy. Please try again in a few minutes."
+            }), 503
+
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
@@ -143,7 +194,8 @@ def get_uv():
     except Exception:
         history_list = []
 
-    return jsonify({
+    # Build final response payload (structure unchanged from previous implementation).
+    payload = {
         "status": "success",
         "date": date_str,
         "latitude": lat_f,
@@ -155,4 +207,9 @@ def get_uv():
         "message": risk["message"],
         "daily": daily_max_list,
         "history": history_list,
-    }), 200
+    }
+
+    # Store successful response in cache for this location.
+    _set_cached_uv(lat_f, lon_f, payload)
+
+    return jsonify(payload), 200
