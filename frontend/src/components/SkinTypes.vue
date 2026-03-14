@@ -56,20 +56,20 @@ const skinTypes = [
   padding: 1.5rem 1.75rem;
   background: #fff;
   border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--uv-grid, #E6E1DA);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 .skin-types__title {
   margin: 0 0 0.5rem;
   font-size: 1.25rem;
   font-weight: 700;
-  color: #0369a1;
+  color: var(--uv-primary, #D8613C);
   letter-spacing: -0.02em;
 }
 .skin-types__intro {
   margin: 0 0 1.25rem;
   font-size: 0.9375rem;
-  color: #64748b;
+  color: var(--uv-text-muted, #8A8A8A);
   line-height: 1.55;
 }
 .skin-types__grid {
@@ -78,21 +78,22 @@ const skinTypes = [
   gap: 1rem;
 }
 .skin-types__card {
-  background: #f8fafc;
+  background: #fff;
   border-radius: 14px;
   padding: 1.25rem 1.5rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--uv-grid, #E6E1DA);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 .skin-types__card-title {
   margin: 0 0 0.5rem;
   font-size: 1rem;
   font-weight: 700;
-  color: #334155;
+  color: var(--uv-text, #4A4A4A);
 }
 .skin-types__card-desc {
   margin: 0;
   font-size: 0.875rem;
-  color: #475569;
+  color: var(--uv-text-muted, #8A8A8A);
   line-height: 1.5;
 }
 

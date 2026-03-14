@@ -1,22 +1,25 @@
 <!--
-  Hero UV Dashboard — Large, prototype-style section with blue gradient.
-  Fetches /api/uv on load via geolocation; displays location, date/time, large UV value,
-  risk badge, graph panel, and warning banner. API integration unchanged.
+  Hero UV Dashboard — Two-column layout: left = current UV summary, right = weekly forecast chart.
+  Pastel gradient hero card. Fetches /api/uv on load via geolocation; API integration unchanged.
 -->
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import MaxUVGraph from '@/components/MaxUVGraph.vue'
 
-const apiBase = import.meta.env.VITE_API_BASE ?? 'http://localhost:5001'
+// Match backend port (default 5000). Override with VITE_API_BASE in .env if you use e.g. 5001 on macOS.
+const apiBase = import.meta.env.VITE_API_BASE ?? 'http://localhost:5000'
 const uvData = ref(null)
 const uvStatus = ref(null)
-const timeFrame = ref('today')
+const uvError = ref(null) // optional message for debugging
 
 async function fetchUvForLocation(latitude, longitude) {
   const url = `${apiBase}/api/uv?lat=${latitude}&lon=${longitude}`
+  uvError.value = null
   try {
     const res = await fetch(url)
     if (!res.ok) {
+      const body = await res.text()
+      uvError.value = body || `HTTP ${res.status}`
       uvStatus.value = 'error'
       uvData.value = null
       return
@@ -24,7 +27,8 @@ async function fetchUvForLocation(latitude, longitude) {
     const json = await res.json()
     uvData.value = json
     uvStatus.value = 'success'
-  } catch {
+  } catch (e) {
+    uvError.value = e?.message || 'Network error'
     uvStatus.value = 'error'
     uvData.value = null
   }
@@ -59,23 +63,26 @@ const formattedDateTime = computed(() => {
   })
 })
 
-// Clean coordinate display for hero location heading
-const locationDisplay = computed(() => {
+// Coordinates in design format: "37.8136° S, 144.9631° E"
+const coordinatesDisplay = computed(() => {
   if (!uvData.value) return null
   const { latitude, longitude } = uvData.value
-  return `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`
+  const latDir = latitude >= 0 ? 'N' : 'S'
+  const lonDir = longitude >= 0 ? 'E' : 'W'
+  return `${Math.abs(latitude).toFixed(4)}° ${latDir}, ${Math.abs(longitude).toFixed(4)}° ${lonDir}`
 })
+
+// Location/region: API does not return place name; show generic until backend adds it
+const locationName = computed(() => uvData.value?.location_name ?? 'Your location')
+const regionDisplay = computed(() => uvData.value?.region ?? '—')
 
 const dailyForGraph = computed(() => {
   if (!uvData.value?.daily) return []
   return uvData.value.daily
 })
 
-// Past 7 days history (backend provides uvData.history); fallback to mock if not available yet.
 const historyForGraph = computed(() => {
   if (Array.isArray(uvData.value?.history) && uvData.value.history.length) return uvData.value.history
-
-  // Temporary mock data for styling if backend history is unavailable.
   const base = Number(uvData.value?.uv_index) || 6.5
   const today = new Date()
   const offsets = [-1.8, 0.2, 1.1, 2.6, 0.7, -0.4, 1.9]
@@ -89,273 +96,269 @@ const historyForGraph = computed(() => {
   })
 })
 
+// Three alert rows: first from API message, then standard recommendations
+const alertRows = computed(() => {
+  const msg = uvData.value?.message ?? ''
+  return [
+    msg || 'Check local UV index for exposure time.',
+    'Wear sunscreen',
+    'Protective clothing and sunglasses',
+  ]
+})
+
 onMounted(startUvFlow)
 </script>
 
 <template>
   <section class="hero-dashboard">
-    <!-- Top bar: search -->
-    <header class="hero-dashboard__top">
-      <div class="hero-dashboard__search-wrap">
-        <span class="hero-dashboard__search-icon" aria-hidden="true">🔍</span>
-        <input
-          type="text"
-          class="hero-dashboard__search"
-          placeholder="Search Location"
-          readonly
-          aria-label="Search location"
-        />
-      </div>
-    </header>
+    <div class="hero-dashboard__grid">
+      <!-- Left column: current UV summary -->
+      <div class="hero-dashboard__left">
+        <!-- a. Search bar -->
+        <div class="hero-dashboard__search-wrap">
+          <span class="hero-dashboard__search-icon" aria-hidden="true">🔍</span>
+          <input
+            type="text"
+            class="hero-dashboard__search"
+            placeholder="Search Location"
+            readonly
+            aria-label="Search location"
+          />
+        </div>
+        <!-- b. Coordinates -->
+        <p v-if="coordinatesDisplay" class="hero-dashboard__coords">{{ coordinatesDisplay }}</p>
+        <!-- c. Location heading, d. Region subtitle -->
+        <div class="hero-dashboard__location-row">
+          <h1 class="hero-dashboard__location-heading">{{ locationName }}</h1>
+          <span class="hero-dashboard__region">{{ regionDisplay }}</span>
+        </div>
+        <!-- e. Date-time -->
+        <p class="hero-dashboard__datetime">{{ formattedDateTime }}</p>
 
-    <!-- Location as main heading + subtitle -->
-    <div class="hero-dashboard__location-block">
-      <h1 class="hero-dashboard__location-heading">
-        {{ locationDisplay ?? 'Your location' }}
-      </h1>
-      <p class="hero-dashboard__location-sub">Your location</p>
-    </div>
+        <!-- Loading / error states -->
+        <div v-if="uvStatus === 'loading'" class="hero-dashboard__state hero-dashboard__loading">
+          Getting your location and UV data…
+        </div>
+        <div v-else-if="uvStatus === 'denied'" class="hero-dashboard__state hero-dashboard__error">
+          Location access is required to retrieve UV data.
+        </div>
+        <div v-else-if="uvStatus === 'error'" class="hero-dashboard__state hero-dashboard__error">
+          <p class="hero-dashboard__error-main">Unable to retrieve UV data.</p>
+          <p v-if="uvError" class="hero-dashboard__error-detail">Make sure the backend is running (e.g. <code>cd backend && python app.py</code>) and using the same port as this app (default <code>http://localhost:5000</code>).</p>
+          <p v-else class="hero-dashboard__error-detail">Ensure the backend is running and reachable at <code>{{ apiBase }}</code>.</p>
+        </div>
 
-    <!-- Timeframe tabs + date/time -->
-    <div class="hero-dashboard__tabs-row">
-      <div class="hero-dashboard__tabs">
-        <button
-          type="button"
-          class="hero-dashboard__tab"
-          :class="{ 'hero-dashboard__tab--active': timeFrame === 'today' }"
-          @click="timeFrame = 'today'"
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          class="hero-dashboard__tab"
-          :class="{ 'hero-dashboard__tab--active': timeFrame === '7days' }"
-          @click="timeFrame = '7days'"
-        >
-          7 Days
-        </button>
-        <button
-          type="button"
-          class="hero-dashboard__tab"
-          :class="{ 'hero-dashboard__tab--active': timeFrame === 'past' }"
-          @click="timeFrame = 'past'"
-        >
-          Past
-        </button>
-      </div>
-      <p class="hero-dashboard__datetime">{{ formattedDateTime }}</p>
-    </div>
-
-    <!-- Loading / error states -->
-    <div v-if="uvStatus === 'loading'" class="hero-dashboard__state hero-dashboard__loading">
-      Getting your location and UV data…
-    </div>
-    <div v-else-if="uvStatus === 'denied'" class="hero-dashboard__state hero-dashboard__error">
-      Location access is required to retrieve UV data.
-    </div>
-    <div v-else-if="uvStatus === 'error'" class="hero-dashboard__state hero-dashboard__error">
-      Unable to retrieve UV data.
-    </div>
-
-    <!-- Success: large UV value + badge, graph, warning banner -->
-    <template v-else-if="uvStatus === 'success' && uvData">
-      <div class="hero-dashboard__uv-row">
-        <span class="hero-dashboard__uv-value">{{ uvData.uv_index }}</span>
-        <span :class="['hero-dashboard__badge', `hero-dashboard__badge--${uvData.color}`]">
-          {{ uvData.risk_level }}
-        </span>
-      </div>
-      <p class="hero-dashboard__uv-label">Max UV Index</p>
-
-      <!-- Graph panel (prototype-style; daily max only) -->
-      <div class="hero-dashboard__graph-panel">
-        <MaxUVGraph
-          :daily="dailyForGraph"
-          :history="historyForGraph"
-          :view="timeFrame === 'past' ? 'past' : timeFrame === '7days' ? '7days' : 'today'"
-        />
+        <!-- f.–i. Max Daily UV label, large value, risk badge, alert list -->
+        <template v-else-if="uvStatus === 'success' && uvData">
+          <p class="hero-dashboard__uv-label">Maximum Daily UV</p>
+          <div class="hero-dashboard__uv-row">
+            <span class="hero-dashboard__uv-value">{{ uvData.uv_index }}</span>
+            <span class="hero-dashboard__badge">{{ uvData.risk_level }}</span>
+          </div>
+          <ul class="hero-dashboard__alerts" role="list">
+            <li
+              v-for="(line, i) in alertRows"
+              :key="i"
+              class="hero-dashboard__alert-item"
+            >
+              <span class="hero-dashboard__alert-icon" aria-hidden="true">⚠</span>
+              <span class="hero-dashboard__alert-text">{{ line }}</span>
+            </li>
+          </ul>
+        </template>
       </div>
 
-      <!-- Warning banner below graph -->
-      <div class="hero-dashboard__warning" role="alert">
-        <span class="hero-dashboard__warning-icon" aria-hidden="true">⚠</span>
-        <span class="hero-dashboard__warning-text">{{ uvData.message }}</span>
+      <!-- Right column: weekly forecast chart card -->
+      <div class="hero-dashboard__right">
+        <div class="hero-dashboard__chart-card">
+          <h2 class="hero-dashboard__chart-title">Weekly Forecast</h2>
+          <MaxUVGraph
+            :daily="dailyForGraph"
+            :history="historyForGraph"
+            view="7days"
+            :dashboard-style="true"
+          />
+        </div>
       </div>
-    </template>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .hero-dashboard {
-  background: linear-gradient(165deg, #0ea5e9 0%, #38bdf8 25%, #7dd3fc 50%, #bae6fd 100%);
-  border-radius: 20px;
-  padding: 2rem 2rem 2.5rem;
-  box-shadow: 0 10px 40px -10px rgba(14, 165, 233, 0.35), 0 4px 12px -4px rgba(0, 0, 0, 0.08);
-  color: #0f172a;
+  background: linear-gradient(
+    135deg,
+    #F4EACD 0%,
+    #CFE4F0 45%,
+    #F4E1B6 100%
+  );
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
-.hero-dashboard__top {
+/* Hero two-column layout: left UV summary, right chart */
+.hero-dashboard__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  min-height: 200px;
+}
+@media (min-width: 900px) {
+  .hero-dashboard__grid {
+    grid-template-columns: 0.9fr 1.2fr;
+    gap: 48px;
+  }
+}
+
+/* Left column content */
+.hero-dashboard__left {
   display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 .hero-dashboard__search-wrap {
   display: flex;
   align-items: center;
-  flex: 1;
-  max-width: 720px;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  max-width: 100%;
+  background: #fff;
   border-radius: 12px;
   padding: 0.6rem 1rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
-.hero-dashboard__search-icon { margin-right: 0.5rem; font-size: 1rem; }
+.hero-dashboard__search-icon {
+  margin-right: 0.5rem;
+  font-size: 1rem;
+}
 .hero-dashboard__search {
   border: none;
   background: none;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   font-size: 0.9375rem;
-  color: #1e293b;
+  color: #4A4A4A;
   outline: none;
 }
-.hero-dashboard__location-block {
-  margin-bottom: 1rem;
+.hero-dashboard__search::placeholder {
+  color: #8A8A8A;
+}
+.hero-dashboard__coords {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #D8613C;
+}
+.hero-dashboard__location-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 .hero-dashboard__location-heading {
   margin: 0;
   font-size: 1.75rem;
   font-weight: 800;
-  letter-spacing: -0.03em;
-  color: #0f172a;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+  letter-spacing: -0.02em;
+  color: #D54E4E;
 }
-.hero-dashboard__location-sub {
-  margin: 0.25rem 0 0;
-  font-size: 0.875rem;
-  color: rgba(15, 23, 42, 0.75);
-}
-
-.hero-dashboard__tabs-row {
-  margin-bottom: 1.25rem;
-}
-.hero-dashboard__tabs {
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: 0.5rem;
-}
-.hero-dashboard__tab {
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.8);
-  background: rgba(255, 255, 255, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
-}
-.hero-dashboard__tab:hover {
-  background: rgba(255, 255, 255, 0.4);
-  border-color: rgba(255, 255, 255, 0.6);
-}
-.hero-dashboard__tab--active {
-  background: #fff;
-  border-color: #fff;
-  color: #0369a1;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+.hero-dashboard__region {
+  font-size: 0.9375rem;
+  color: #8A8A8A;
 }
 .hero-dashboard__datetime {
   margin: 0;
-  font-size: 0.8125rem;
-  color: rgba(15, 23, 42, 0.75);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #D54E4E;
 }
-
-.hero-dashboard__state {
-  padding: 1.5rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.9);
-  font-size: 0.9375rem;
+.hero-dashboard__uv-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: #8A8A8A;
 }
-.hero-dashboard__loading { color: #475569; }
-.hero-dashboard__error { color: #b91c1c; font-weight: 600; }
-
 .hero-dashboard__uv-row {
   display: flex;
   align-items: baseline;
   gap: 1rem;
   flex-wrap: wrap;
-  margin-bottom: 0.25rem;
 }
 .hero-dashboard__uv-value {
-  font-size: 4rem;
+  font-size: 3.5rem;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.04em;
-  color: #0f172a;
-  text-shadow: 0 2px 4px rgba(255, 255, 255, 0.4);
+  color: #D54E4E;
 }
 .hero-dashboard__badge {
   display: inline-block;
-  padding: 0.4rem 0.85rem;
-  border-radius: 10px;
-  font-size: 1rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.9375rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  color: #fff;
+  background: #D44A4A;
 }
-.hero-dashboard__badge--green { background: #dcfce7; color: #166534; }
-.hero-dashboard__badge--yellow { background: #fef9c3; color: #854d0e; }
-.hero-dashboard__badge--orange { background: #ffedd5; color: #c2410c; }
-.hero-dashboard__badge--red { background: #fee2e2; color: #b91c1c; }
-.hero-dashboard__badge--purple { background: #ede9fe; color: #5b21b6; }
-.hero-dashboard__uv-label {
-  margin: 0 0 1.25rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.8);
+.hero-dashboard__alerts {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
-
-.hero-dashboard__graph-panel {
-  margin-bottom: 1.25rem;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-}
-
-.hero-dashboard__warning {
+.hero-dashboard__alert-item {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
-  padding: 1.25rem 1.5rem;
-  background: #fff;
-  border-radius: 12px;
-  border-left: 5px solid #dc2626;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  gap: 0.5rem;
 }
-.hero-dashboard__warning-icon {
+.hero-dashboard__alert-icon {
   flex-shrink: 0;
-  font-size: 1.5rem;
-}
-.hero-dashboard__warning-text {
+  color: #D54E4E;
   font-size: 1rem;
-  line-height: 1.55;
-  color: #374151;
-  font-weight: 500;
+}
+.hero-dashboard__alert-text {
+  font-size: 0.9375rem;
+  color: #D54E4E;
+  line-height: 1.4;
+}
+
+.hero-dashboard__state {
+  padding: 1.25rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 0.9375rem;
+  margin-top: 0.5rem;
+}
+.hero-dashboard__loading { color: #4A4A4A; }
+.hero-dashboard__error { color: #D44A4A; }
+.hero-dashboard__error-main { margin: 0 0 0.5rem; font-weight: 600; }
+.hero-dashboard__error-detail { margin: 0; font-size: 0.875rem; font-weight: 400; opacity: 0.95; }
+.hero-dashboard__error-detail code { background: rgba(0,0,0,0.06); padding: 0.15rem 0.35rem; border-radius: 4px; font-size: 0.8em; }
+
+/* Right column: chart card */
+.hero-dashboard__right {
+  min-width: 0;
+}
+.hero-dashboard__chart-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+.hero-dashboard__chart-title {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #D8613C;
+  text-align: center;
 }
 
 @media (min-width: 640px) {
-  .hero-dashboard__uv-value { font-size: 4.5rem; }
+  .hero-dashboard__uv-value { font-size: 4rem; }
   .hero-dashboard__location-heading { font-size: 2rem; }
 }
 @media (min-width: 900px) {
-  .hero-dashboard { padding: 2.5rem 3rem 3rem; }
-  .hero-dashboard__uv-value { font-size: 5rem; }
+  .hero-dashboard { padding: 2.5rem 3rem; }
+  .hero-dashboard__uv-value { font-size: 4.5rem; }
   .hero-dashboard__location-heading { font-size: 2.25rem; }
 }
 </style>

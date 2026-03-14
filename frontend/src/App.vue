@@ -1,7 +1,7 @@
 <!--
-  Homepage — Desktop layout aligned with Hi-Fi prototype.
-  Hero UV dashboard (blue gradient), nav tabs, Why UV Protection, UV Impacts, Skin Types.
-  Backend integration to /api/uv unchanged; no personalised experience logic.
+  Homepage — UVIBE dashboard layout.
+  Warm neutral background, top nav (Impact active), hero with two-column UV dashboard,
+  below-hero: Why UV Protection, UV Impacts, Skin Types. Backend /api/uv unchanged.
 -->
 <script setup>
 import { ref } from 'vue'
@@ -14,26 +14,13 @@ const infoTab = ref('uv-impacts')
 
 <template>
   <div class="homepage">
-    <header class="homepage__header">
+    <!-- Top navigation: brand left, nav items right, Impact active with orange underline -->
+    <header class="homepage__header" aria-label="Main navigation">
       <div class="homepage__header-inner">
         <div class="homepage__brand">
-          <span class="homepage__brand-mark">UVibe</span>
-          <div class="homepage__brand-text">
-            <h1 class="homepage__title">Sun Smart UV Dashboard</h1>
-            <p class="homepage__tagline">Live UV insights to help you plan safer time in the sun.</p>
-          </div>
+          <span class="homepage__brand-text">UVIBE</span>
+          <span class="homepage__brand-icon" aria-hidden="true">☀</span>
         </div>
-      </div>
-    </header>
-
-    <main class="homepage__main">
-      <div class="homepage__container">
-        <!-- Hero: large UV dashboard (blue gradient, full width within container) -->
-        <section class="homepage__hero" aria-label="UV dashboard">
-          <UVDashboard />
-        </section>
-
-        <!-- Navigation tabs (prototype-style; other tabs not functional yet) -->
         <nav class="homepage__nav" aria-label="Information sections">
           <button
             type="button"
@@ -41,7 +28,7 @@ const infoTab = ref('uv-impacts')
             :class="{ 'homepage__nav-tab--active': infoTab === 'uv-impacts' }"
             @click="infoTab = 'uv-impacts'"
           >
-            UV Impacts
+            Impact
           </button>
           <button
             type="button"
@@ -76,11 +63,19 @@ const infoTab = ref('uv-impacts')
             Resources
           </button>
         </nav>
+      </div>
+    </header>
 
-        <!-- Two-column content: left = Why + tab content, right = Skin Types -->
+    <main class="homepage__main">
+      <div class="homepage__container">
+        <!-- Hero: two-column UV dashboard (pastel gradient card) -->
+        <section class="homepage__hero" aria-label="UV dashboard">
+          <UVDashboard />
+        </section>
+
+        <!-- Below-hero: tab content (Impact = UV Impacts + Why; others coming soon) -->
         <div class="homepage__columns">
           <div class="homepage__col homepage__col--left">
-            <!-- Why UV Protection Matters — stronger heading, balanced layout -->
             <section class="homepage__why">
               <h2 class="homepage__why-title">Why UV Protection Matters</h2>
               <p class="homepage__why-text">
@@ -115,14 +110,26 @@ const infoTab = ref('uv-impacts')
 <style scoped>
 .homepage {
   min-height: 100vh;
-  background: #f8fafc;
-  color: #1e293b;
+  /* Design system colours */
+  --uv-bg: #F4F1EC;
+  --uv-primary: #D8613C;
+  --uv-hero-blue: #CFE4F0;
+  --uv-hero-sun: #F4E1B6;
+  --uv-danger: #D44A4A;
+  --uv-value: #D54E4E;
+  --uv-chart-bar: #E9D5B5;
+  --uv-grid: #E6E1DA;
+  --uv-text: #4A4A4A;
+  --uv-text-muted: #8A8A8A;
+  background: var(--uv-bg);
+  color: var(--uv-text);
 }
+
+/* Top navigation */
 .homepage__header {
-  padding: 1.5rem 1.5rem 1rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: linear-gradient(180deg, #e0f2fe 0%, #f0f9ff 40%, #fff 100%);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  padding: 1rem 1.5rem;
+  background: var(--uv-bg);
+  border-bottom: 1px solid var(--uv-grid);
 }
 .homepage__header-inner {
   max-width: 1280px;
@@ -130,44 +137,60 @@ const infoTab = ref('uv-impacts')
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
 }
 .homepage__brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-}
-.homepage__brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
-  background: radial-gradient(circle at 30% 20%, #facc15, #f97316 45%, #0ea5e9 95%);
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
-  font-weight: 800;
-  font-size: 0.95rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #0f172a;
+  gap: 0.5rem;
 }
 .homepage__brand-text {
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+  color: var(--uv-primary);
+}
+.homepage__brand-icon {
+  font-size: 1.1rem;
+  color: var(--uv-primary);
+}
+.homepage__nav {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
 }
-.homepage__title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  color: #0f172a;
-}
-.homepage__tagline {
-  margin: 0.25rem 0 0;
-  font-size: 0.9375rem;
-  color: #0369a1;
+.homepage__nav-tab {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
   font-weight: 500;
+  color: var(--uv-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.2s;
+  position: relative;
 }
+.homepage__nav-tab:hover {
+  color: var(--uv-text);
+}
+.homepage__nav-tab--active {
+  color: var(--uv-primary);
+  font-weight: 600;
+}
+.homepage__nav-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.25rem;
+  height: 2px;
+  background: var(--uv-primary);
+  border-radius: 1px;
+}
+
 .homepage__main {
   padding: 2rem 1.5rem 3rem;
 }
@@ -179,37 +202,7 @@ const infoTab = ref('uv-impacts')
   margin-bottom: 2rem;
 }
 
-.homepage__nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid #e2e8f0;
-}
-.homepage__nav-tab {
-  padding: 0.6rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #64748b;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: color 0.2s, border-color 0.2s, background 0.2s;
-}
-.homepage__nav-tab:hover {
-  color: #0369a1;
-  border-color: #bae6fd;
-  background: #f0f9ff;
-}
-.homepage__nav-tab--active {
-  color: #0369a1;
-  border-color: #0ea5e9;
-  background: #e0f2fe;
-  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.15);
-}
-
+/* Below-hero: soft white cards, design system */
 .homepage__columns {
   display: flex;
   flex-direction: column;
@@ -218,32 +211,30 @@ const infoTab = ref('uv-impacts')
 .homepage__col {
   min-width: 0;
 }
-
 .homepage__why {
   margin-bottom: 2rem;
   padding: 1.5rem 1.75rem;
   background: #fff;
   border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--uv-grid);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 .homepage__why-title {
   margin: 0 0 1rem;
   font-size: 1.375rem;
   font-weight: 700;
-  color: #0369a1;
+  color: var(--uv-primary);
   letter-spacing: -0.02em;
 }
 .homepage__why-text {
   margin: 0 0 0.75rem;
   font-size: 1rem;
   line-height: 1.65;
-  color: #475569;
+  color: var(--uv-text-muted);
 }
 .homepage__why-text:last-child {
   margin-bottom: 0;
 }
-
 .homepage__coming-wrap {
   padding-top: 0.5rem;
 }
@@ -251,17 +242,14 @@ const infoTab = ref('uv-impacts')
   margin: 0;
   padding: 2rem;
   text-align: center;
-  color: #94a3b8;
+  color: var(--uv-text-muted);
   font-size: 0.9375rem;
   border-radius: 16px;
   background: #fff;
-  border: 2px dashed #e2e8f0;
+  border: 2px dashed var(--uv-grid);
 }
 
 @media (min-width: 900px) {
-  .homepage__title {
-    font-size: 2.1rem;
-  }
   .homepage__main {
     padding: 2.5rem 2rem 3.5rem;
   }
