@@ -18,10 +18,12 @@ def create_app():
     from app.routes.health_routes import health_bp
     from app.routes.weather_routes import weather_bp
     from app.routes.awareness_routes import awareness_bp
+    from app.routes.location_routes import location_bp
 
     app.register_blueprint(uv_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(weather_bp)
     app.register_blueprint(awareness_bp)
+    app.register_blueprint(location_bp)
 
     return app

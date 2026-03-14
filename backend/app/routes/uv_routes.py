@@ -56,9 +56,46 @@ def _set_cached_uv(lat: float, lon: float, payload: dict):
     key = _make_cache_key(lat, lon)
     UV_CACHE[key] = {"timestamp": time.time(), "payload": payload}
 
+from database.db import get_connection
+
+
 def uv_index_to_risk(uv_index):
-    """Map UV index to risk_level, color, and message for frontend display."""
+    """Look up UV risk data from the database.
+
+    Falls back to the previous hard-coded mapping if the database is
+    unavailable or no matching range exists. This keeps the endpoint
+    backwards compatible while allowing Epic 1 to use the UVRiskLevel
+    table when it is populated.
+    """
+
     uv = float(uv_index)
+
+    # Try to use the database table first.
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT risk_level, message, color
+                    FROM uv_risk_level
+                    WHERE %s BETWEEN min_uv AND max_uv
+                    ORDER BY max_uv - min_uv ASC
+                    LIMIT 1;
+                    """,
+                    (uv,),
+                )
+                row = cur.fetchone()
+    except Exception:
+        row = None
+
+    if row:
+        return {
+            "risk_level": row["risk_level"],
+            "color": row["color"],
+            "message": row["message"],
+        }
+
+    # Fallback: WHO/Australian UV range mapping (Epic 1). 0-2 Low, 3-5 Moderate, 6-7 High, 8-10 Very High, 11+ Extreme.
     if uv <= 2:
         return {
             "risk_level": "Low",

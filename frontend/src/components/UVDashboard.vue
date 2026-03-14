@@ -1,6 +1,9 @@
 <!--
-  Hero UV Dashboard — Two-column layout: left = current UV summary, right = weekly forecast chart.
-  Pastel gradient hero card. Fetches /api/uv on load via geolocation; API integration unchanged.
+  Hero UV Dashboard — Epic 1: Track UV Levels.
+  Two-column layout: left = current UV summary (with location search), right = weekly forecast chart.
+  - Criterion 1: On load, retrieve UV from trusted API using browser geolocation.
+  - Criterion 2: Display UV index clearly; criterion 3: colour-code by WHO/Australian standards.
+  - Criterion 4: Plain-language alert from API message; criterion 5: auto-update on refresh/location change.
 -->
 <script setup>
 import { ref, onMounted, computed } from 'vue'
@@ -10,8 +13,17 @@ import MaxUVGraph from '@/components/MaxUVGraph.vue'
 const apiBase = import.meta.env.VITE_API_BASE ?? 'http://localhost:5000'
 const uvData = ref(null)
 const uvStatus = ref(null)
-const uvError = ref(null) // optional message for debugging
+const uvError = ref(null)
 
+// Epic 1: Search location integration — selected location overrides geolocation for UV fetch
+const searchQuery = ref('')
+const searchResults = ref([])
+const showDropdown = ref(false)
+const searchDebounce = ref(null)
+/** Selected location from search: { name, state, country, latitude, longitude, postcode } */
+const selectedLocation = ref(null)
+
+/** Epic 1: Fetch UV from trusted API for given coordinates. Used on load (geolocation) and when user selects a location. */
 async function fetchUvForLocation(latitude, longitude) {
   const url = `${apiBase}/api/uv?lat=${latitude}&lon=${longitude}`
   uvError.value = null
@@ -34,6 +46,7 @@ async function fetchUvForLocation(latitude, longitude) {
   }
 }
 
+/** Epic 1 criterion 1: On page load, request browser geolocation and fetch UV. If unavailable, show error. */
 function startUvFlow() {
   uvStatus.value = 'loading'
   uvData.value = null
@@ -49,6 +62,50 @@ function startUvFlow() {
     () => { uvStatus.value = 'denied' },
     { enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 }
   )
+}
+
+/** Epic 1: Fetch location search results from backend (uses PostgreSQL Location table when available). */
+async function runLocationSearch(q) {
+  const query = (q || '').trim()
+  if (!query) {
+    searchResults.value = []
+    return
+  }
+  try {
+    const res = await fetch(`${apiBase}/api/location-search?q=${encodeURIComponent(query)}`)
+    if (!res.ok) {
+      searchResults.value = []
+      return
+    }
+    const json = await res.json()
+    searchResults.value = Array.isArray(json) ? json : []
+  } catch {
+    searchResults.value = []
+  }
+}
+
+function onSearchInput() {
+  clearTimeout(searchDebounce.value)
+  searchDebounce.value = setTimeout(() => {
+    runLocationSearch(searchQuery.value)
+    showDropdown.value = true
+  }, 280)
+}
+
+/** Epic 1 criterion 5: On selecting a location, use its coordinates and immediately refresh UV data. */
+function selectLocation(loc) {
+  selectedLocation.value = loc
+  searchQuery.value = loc.name
+  showDropdown.value = false
+  uvStatus.value = 'loading'
+  fetchUvForLocation(loc.latitude, loc.longitude)
+}
+
+function closeDropdown() {
+  showDropdown.value = false
+}
+function delayCloseDropdown() {
+  setTimeout(closeDropdown, 180)
 }
 
 const formattedDateTime = computed(() => {
@@ -72,9 +129,15 @@ const coordinatesDisplay = computed(() => {
   return `${Math.abs(latitude).toFixed(4)}° ${latDir}, ${Math.abs(longitude).toFixed(4)}° ${lonDir}`
 })
 
-// Location/region: API does not return place name; show generic until backend adds it
-const locationName = computed(() => uvData.value?.location_name ?? 'Your location')
-const regionDisplay = computed(() => uvData.value?.region ?? '—')
+// Epic 1: When user has selected a location from search, show its name/region; otherwise API or "Your location"
+const locationName = computed(() => {
+  if (selectedLocation.value) return selectedLocation.value.name
+  return uvData.value?.location_name ?? 'Your location'
+})
+const regionDisplay = computed(() => {
+  if (selectedLocation.value) return `${selectedLocation.value.state} / ${selectedLocation.value.country || 'Australia'}`
+  return uvData.value?.region ?? '—'
+})
 
 const dailyForGraph = computed(() => {
   if (!uvData.value?.daily) return []
@@ -96,7 +159,7 @@ const historyForGraph = computed(() => {
   })
 })
 
-// Three alert rows: first from API message, then standard recommendations
+/** Epic 1 criterion 4: Plain-language alert — first row is API message (WHO/Australian risk text), then recommendations. */
 const alertRows = computed(() => {
   const msg = uvData.value?.message ?? ''
   return [
@@ -106,6 +169,19 @@ const alertRows = computed(() => {
   ]
 })
 
+/** Epic 1 criterion 3 & 5: Badge/alert colour from API (WHO/Australian: green/yellow/orange/red/purple). */
+const riskColorClass = computed(() => {
+  const color = uvData.value?.color
+  if (!color) return 'hero-dashboard__badge--red'
+  return `hero-dashboard__badge--${color}`
+})
+const riskAlertColorClass = computed(() => {
+  const color = uvData.value?.color
+  if (!color) return 'hero-dashboard__alert--red'
+  return `hero-dashboard__alert--${color}`
+})
+
+// Epic 1 criterion 5: On mount, fetch UV using geolocation. Page refresh re-runs this and fetches again.
 onMounted(startUvFlow)
 </script>
 
@@ -114,16 +190,36 @@ onMounted(startUvFlow)
     <div class="hero-dashboard__grid">
       <!-- Left column: current UV summary -->
       <div class="hero-dashboard__left">
-        <!-- a. Search bar -->
-        <div class="hero-dashboard__search-wrap">
+        <!-- Epic 1: Search location — select a place to fetch UV for that location and auto-update dashboard -->
+        <div class="hero-dashboard__search-wrap" role="combobox" :aria-expanded="showDropdown" aria-haspopup="listbox" aria-owns="location-listbox">
           <span class="hero-dashboard__search-icon" aria-hidden="true">🔍</span>
           <input
+            v-model="searchQuery"
             type="text"
             class="hero-dashboard__search"
             placeholder="Search Location"
-            readonly
             aria-label="Search location"
+            autocomplete="off"
+            @input="onSearchInput"
+            @focus="searchQuery && (showDropdown = true)"
+            @blur="delayCloseDropdown"
           />
+          <ul
+            v-if="showDropdown && searchResults.length"
+            id="location-listbox"
+            class="hero-dashboard__dropdown"
+            role="listbox"
+          >
+            <li
+              v-for="(loc, idx) in searchResults"
+              :key="`${loc.name}-${loc.postcode}-${idx}`"
+              role="option"
+              class="hero-dashboard__dropdown-item"
+              @mousedown.prevent="selectLocation(loc)"
+            >
+              {{ loc.name }}, {{ loc.state }} {{ loc.postcode }}
+            </li>
+          </ul>
         </div>
         <!-- b. Coordinates -->
         <p v-if="coordinatesDisplay" class="hero-dashboard__coords">{{ coordinatesDisplay }}</p>
@@ -148,18 +244,19 @@ onMounted(startUvFlow)
           <p v-else class="hero-dashboard__error-detail">Ensure the backend is running and reachable at <code>{{ apiBase }}</code>.</p>
         </div>
 
-        <!-- f.–i. Max Daily UV label, large value, risk badge, alert list -->
+        <!-- Epic 1 criteria 2 & 3: Clear UV value + label; colour-coded risk badge (WHO/Australian) -->
         <template v-else-if="uvStatus === 'success' && uvData">
           <p class="hero-dashboard__uv-label">Maximum Daily UV</p>
           <div class="hero-dashboard__uv-row">
             <span class="hero-dashboard__uv-value">{{ uvData.uv_index }}</span>
-            <span class="hero-dashboard__badge">{{ uvData.risk_level }}</span>
+            <span :class="['hero-dashboard__badge', riskColorClass]">{{ uvData.risk_level }}</span>
           </div>
+          <!-- Epic 1 criterion 4: Plain-language alert from API -->
           <ul class="hero-dashboard__alerts" role="list">
             <li
               v-for="(line, i) in alertRows"
               :key="i"
-              class="hero-dashboard__alert-item"
+              :class="['hero-dashboard__alert-item', riskAlertColorClass]"
             >
               <span class="hero-dashboard__alert-icon" aria-hidden="true">⚠</span>
               <span class="hero-dashboard__alert-text">{{ line }}</span>
@@ -218,6 +315,7 @@ onMounted(startUvFlow)
   gap: 0.5rem;
 }
 .hero-dashboard__search-wrap {
+  position: relative;
   display: flex;
   align-items: center;
   max-width: 100%;
@@ -225,6 +323,34 @@ onMounted(startUvFlow)
   border-radius: 12px;
   padding: 0.6rem 1rem;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.hero-dashboard__dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 10;
+}
+.hero-dashboard__dropdown-item {
+  padding: 0.6rem 1rem;
+  font-size: 0.9375rem;
+  color: #4A4A4A;
+  cursor: pointer;
+  border-bottom: 1px solid #E6E1DA;
+}
+.hero-dashboard__dropdown-item:last-child {
+  border-bottom: none;
+}
+.hero-dashboard__dropdown-item:hover {
+  background: #F4F1EC;
 }
 .hero-dashboard__search-icon {
   margin-right: 0.5rem;
@@ -288,6 +414,7 @@ onMounted(startUvFlow)
   letter-spacing: -0.04em;
   color: #D54E4E;
 }
+/* Epic 1 criterion 3 & 5: WHO/Australian colour-coding for risk badge */
 .hero-dashboard__badge {
   display: inline-block;
   padding: 0.35rem 0.75rem;
@@ -297,6 +424,11 @@ onMounted(startUvFlow)
   color: #fff;
   background: #D44A4A;
 }
+.hero-dashboard__badge--green { background: #16a34a; }
+.hero-dashboard__badge--yellow { background: #ca8a04; color: #1c1917; }
+.hero-dashboard__badge--orange { background: #ea580c; }
+.hero-dashboard__badge--red { background: #D44A4A; }
+.hero-dashboard__badge--purple { background: #7c3aed; }
 .hero-dashboard__alerts {
   margin: 1rem 0 0;
   padding: 0;
@@ -312,14 +444,23 @@ onMounted(startUvFlow)
 }
 .hero-dashboard__alert-icon {
   flex-shrink: 0;
-  color: #D54E4E;
   font-size: 1rem;
 }
 .hero-dashboard__alert-text {
   font-size: 0.9375rem;
-  color: #D54E4E;
   line-height: 1.4;
 }
+/* Epic 1: Alert colour follows risk level (WHO/Australian) */
+.hero-dashboard__alert--green .hero-dashboard__alert-icon,
+.hero-dashboard__alert--green .hero-dashboard__alert-text { color: #16a34a; }
+.hero-dashboard__alert--yellow .hero-dashboard__alert-icon,
+.hero-dashboard__alert--yellow .hero-dashboard__alert-text { color: #ca8a04; }
+.hero-dashboard__alert--orange .hero-dashboard__alert-icon,
+.hero-dashboard__alert--orange .hero-dashboard__alert-text { color: #ea580c; }
+.hero-dashboard__alert--red .hero-dashboard__alert-icon,
+.hero-dashboard__alert--red .hero-dashboard__alert-text { color: #D54E4E; }
+.hero-dashboard__alert--purple .hero-dashboard__alert-icon,
+.hero-dashboard__alert--purple .hero-dashboard__alert-text { color: #7c3aed; }
 
 .hero-dashboard__state {
   padding: 1.25rem;
