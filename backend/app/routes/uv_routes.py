@@ -7,6 +7,8 @@ import requests
 from datetime import date, timedelta
 from flask import Blueprint, jsonify, request
 
+from database.db import get_connection
+
 uv_bp = Blueprint("uv_bp", __name__)
 
 OPEN_METEO_URL = (
@@ -56,7 +58,27 @@ def _set_cached_uv(lat: float, lon: float, payload: dict):
     key = _make_cache_key(lat, lon)
     UV_CACHE[key] = {"timestamp": time.time(), "payload": payload}
 
-from database.db import get_connection
+
+def _get_nearest_location_name(lat: float, lon: float):
+    """Look up the nearest location from the database for display (suburb, state). Returns (name, region) or (None, None)."""
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT suburb, state
+                    FROM location
+                    ORDER BY (latitude - %s) * (latitude - %s) + (longitude - %s) * (longitude - %s)
+                    LIMIT 1;
+                    """,
+                    (lat, lat, lon, lon),
+                )
+                row = cur.fetchone()
+    except Exception:
+        return None, None
+    if not row:
+        return None, None
+    return row["suburb"], row["state"]
 
 
 def uv_index_to_risk(uv_index):
@@ -231,6 +253,10 @@ def get_uv():
     except Exception:
         history_list = []
 
+    # Resolve nearest location from DB for display (so frontend can show suburb name instead of "Your location").
+    location_name, state = _get_nearest_location_name(lat_f, lon_f)
+    region = f"{state} / Australia" if state else None
+
     # Build final response payload (structure unchanged from previous implementation).
     payload = {
         "status": "success",
@@ -245,6 +271,10 @@ def get_uv():
         "daily": daily_max_list,
         "history": history_list,
     }
+    if location_name is not None:
+        payload["location_name"] = location_name
+    if region is not None:
+        payload["region"] = region
 
     # Store successful response in cache for this location.
     _set_cached_uv(lat_f, lon_f, payload)
