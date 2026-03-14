@@ -1,10 +1,5 @@
-"""Location search endpoints backed by PostgreSQL.
+"""Location search endpoints backed by PostgreSQL."""
 
-Provides a simple search API used by the UV dashboard to look up
-suburbs / postcodes and resolve them to coordinates.
-"""
-
-import json
 import time
 from flask import Blueprint, jsonify, request
 
@@ -12,16 +7,29 @@ from database.db import get_connection
 
 
 location_bp = Blueprint("location_bp", __name__)
+SEARCH_CACHE = {}
+SEARCH_CACHE_TTL_SECONDS = 120  # 2 minutes
 
-# #region agent log
-DEBUG_LOG_PATH = "/Users/sidharthsudhi/Documents/FIT5120 -IE/Onboarding project/UVibe/sunsmart-platform/.cursor/debug-a9408d.log"
-def _debug_log(hypothesis_id, location, message, data):
-    try:
-        with open(DEBUG_LOG_PATH, "a") as f:
-            f.write(json.dumps({"sessionId": "a9408d", "hypothesisId": hypothesis_id, "location": location, "message": message, "data": data, "timestamp": int(time.time() * 1000)}) + "\n")
-    except Exception:
-        pass
-# #endregion
+
+def _get_cached_search(query: str):
+    """Return cached location search results for query if fresh."""
+    entry = SEARCH_CACHE.get(query)
+    if not entry:
+        return None
+    ts = entry.get("timestamp")
+    results = entry.get("results")
+    if ts is None or results is None or time.time() - ts > SEARCH_CACHE_TTL_SECONDS:
+        SEARCH_CACHE.pop(query, None)
+        return None
+    return results
+
+
+def _set_cached_search(query: str, results):
+    """Store location search results in cache."""
+    SEARCH_CACHE[query] = {
+        "timestamp": time.time(),
+        "results": results,
+    }
 
 
 @location_bp.route("/api/location-search", methods=["GET"])
@@ -46,13 +54,20 @@ def location_search():
     """
 
     query = request.args.get("q", "").strip()
-    # #region agent log
-    _debug_log("H0", "location_routes.py:entry", "route entered", {"q": query})
-    # #endregion
     if not query:
         return jsonify({"error": "q query parameter is required"}), 400
 
+    # Single-character fuzzy search causes expensive scans and poor UX latency.
+    if len(query) < 2:
+        return jsonify([]), 200
+
+    query_lower = query.lower()
+    cached = _get_cached_search(query_lower)
+    if cached is not None:
+        return jsonify(cached), 200
+
     q_like = f"%{query.lower()}%"
+    q_prefix = f"{query.lower()}%"
 
     try:
         with get_connection() as conn:
@@ -62,14 +77,20 @@ def location_search():
                     SELECT postcode, suburb, state, latitude, longitude
                     FROM location
                     WHERE LOWER(suburb) LIKE %s
+                       OR LOWER(suburb) LIKE %s
                        OR postcode = %s
                     ORDER BY
-                        CASE WHEN LOWER(suburb) = %s THEN 0 ELSE 1 END,
+                        CASE
+                            WHEN postcode = %s THEN 0
+                            WHEN LOWER(suburb) = %s THEN 1
+                            WHEN LOWER(suburb) LIKE %s THEN 2
+                            ELSE 3
+                        END,
                         suburb ASC,
                         postcode ASC
                     LIMIT 20;
                     """,
-                    (q_like, query, query.lower()),
+                    (q_prefix, q_like, query, query, query_lower, q_prefix),
                 )
                 rows = cur.fetchall()
         results = [
@@ -84,9 +105,7 @@ def location_search():
             for row in rows
         ]
     except Exception as exc:  # pragma: no cover - defensive
-        # #region agent log
-        _debug_log("H1-H5", "location_routes.py:except", "location_search_exception", {"exc_type": type(exc).__name__, "exc_message": str(exc)})
-        # #endregion
         return jsonify({"error": f"Database error while searching locations: {exc}"}), 500
 
+    _set_cached_search(query_lower, results)
     return jsonify(results), 200

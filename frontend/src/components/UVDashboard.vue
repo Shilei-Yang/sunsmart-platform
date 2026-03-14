@@ -25,10 +25,12 @@ const selectedLocation = ref(null)
 
 /** Epic 1: Fetch UV from trusted API for given coordinates. Used on load (geolocation) and when user selects a location. */
 async function fetchUvForLocation(latitude, longitude) {
-  const url = `${apiBase}/api/uv?lat=${latitude}&lon=${longitude}`
+  const url = `${apiBase}/api/uv?lat=${latitude}&lon=${longitude}&include_history=0`
   uvError.value = null
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 12000)
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, { signal: controller.signal })
     if (!res.ok) {
       const body = await res.text()
       uvError.value = body || `HTTP ${res.status}`
@@ -40,9 +42,11 @@ async function fetchUvForLocation(latitude, longitude) {
     uvData.value = json
     uvStatus.value = 'success'
   } catch (e) {
-    uvError.value = e?.message || 'Network error'
+    uvError.value = e?.name === 'AbortError' ? 'Request timed out' : (e?.message || 'Network error')
     uvStatus.value = 'error'
     uvData.value = null
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -60,19 +64,26 @@ function startUvFlow() {
       fetchUvForLocation(latitude, longitude)
     },
     () => { uvStatus.value = 'denied' },
-    { enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 }
+    // Faster first paint: accept cached location for 15 minutes and lower timeout.
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 900000 }
   )
 }
 
 /** Epic 1: Fetch location search results from backend (uses PostgreSQL Location table when available). */
 async function runLocationSearch(q) {
   const query = (q || '').trim()
-  if (!query) {
+  if (!query || query.length < 2) {
     searchResults.value = []
+    showDropdown.value = false
     return
   }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 5000)
   try {
-    const res = await fetch(`${apiBase}/api/location-search?q=${encodeURIComponent(query)}`)
+    const res = await fetch(
+      `${apiBase}/api/location-search?q=${encodeURIComponent(query)}`,
+      { signal: controller.signal }
+    )
     if (!res.ok) {
       searchResults.value = []
       return
@@ -81,15 +92,24 @@ async function runLocationSearch(q) {
     searchResults.value = Array.isArray(json) ? json : []
   } catch {
     searchResults.value = []
+  } finally {
+    clearTimeout(timer)
   }
 }
 
 function onSearchInput() {
+  const query = (searchQuery.value || '').trim()
+  if (query.length < 2) {
+    clearTimeout(searchDebounce.value)
+    searchResults.value = []
+    showDropdown.value = false
+    return
+  }
   clearTimeout(searchDebounce.value)
   searchDebounce.value = setTimeout(() => {
     runLocationSearch(searchQuery.value)
     showDropdown.value = true
-  }, 280)
+  }, 220)
 }
 
 /** Epic 1 criterion 5: On selecting a location, use its coordinates and immediately refresh UV data. */
@@ -138,6 +158,25 @@ const regionDisplay = computed(() => {
   if (selectedLocation.value) return `${selectedLocation.value.state} / ${selectedLocation.value.country || 'Australia'}`
   return uvData.value?.region ?? '—'
 })
+const currentUvDisplay = computed(() => {
+  const value = uvData.value?.current_uv
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
+  return Number(value).toFixed(1)
+})
+const currentRiskLevelDisplay = computed(() => uvData.value?.current_risk_level ?? 'Unavailable')
+function uvColorToHex(color) {
+  switch (color) {
+    case 'green': return '#16a34a'
+    case 'yellow': return '#ca8a04'
+    case 'orange': return '#ea580c'
+    case 'red': return '#D54E4E'
+    case 'purple': return '#7c3aed'
+    default: return '#6b7280'
+  }
+}
+const currentUvTextStyle = computed(() => ({
+  color: uvColorToHex(uvData.value?.current_color),
+}))
 
 const dailyForGraph = computed(() => {
   if (!uvData.value?.daily) return []
@@ -179,6 +218,21 @@ const riskAlertColorClass = computed(() => {
   const color = uvData.value?.color
   if (!color) return 'hero-dashboard__alert--red'
   return `hero-dashboard__alert--${color}`
+})
+const currentRiskColorClass = computed(() => {
+  const color = uvData.value?.current_color
+  if (!color) return 'hero-dashboard__badge--neutral'
+  return `hero-dashboard__badge--${color}`
+})
+const currentAlertColorClass = computed(() => {
+  const color = uvData.value?.current_color
+  if (!color) return 'hero-dashboard__alert--neutral'
+  return `hero-dashboard__alert--${color}`
+})
+const currentAlertRows = computed(() => {
+  const msg = uvData.value?.current_message ?? ''
+  if (!msg) return []
+  return [msg]
 })
 
 // Epic 1 criterion 5: On mount, fetch UV using geolocation. Page refresh re-runs this and fetches again.
@@ -246,22 +300,42 @@ onMounted(startUvFlow)
 
         <!-- Epic 1 criteria 2 & 3: Clear UV value + label; colour-coded risk badge (WHO/Australian) -->
         <template v-else-if="uvStatus === 'success' && uvData">
-          <p class="hero-dashboard__uv-label">Maximum Daily UV</p>
-          <div class="hero-dashboard__uv-row">
-            <span class="hero-dashboard__uv-value">{{ uvData.uv_index }}</span>
-            <span :class="['hero-dashboard__badge', riskColorClass]">{{ uvData.risk_level }}</span>
+          <div class="hero-dashboard__uv-card hero-dashboard__uv-card--current">
+            <p class="hero-dashboard__uv-label">Current UV</p>
+            <div class="hero-dashboard__uv-row">
+              <span class="hero-dashboard__uv-value hero-dashboard__uv-value--current" :style="currentUvTextStyle">{{ currentUvDisplay }}</span>
+              <span :class="['hero-dashboard__badge', currentRiskColorClass]">{{ currentRiskLevelDisplay }}</span>
+            </div>
+            <ul v-if="currentAlertRows.length" class="hero-dashboard__alerts hero-dashboard__alerts--compact" role="list">
+              <li
+                v-for="(line, i) in currentAlertRows"
+                :key="`current-${i}`"
+                :class="['hero-dashboard__alert-item', currentAlertColorClass]"
+              >
+                <span class="hero-dashboard__alert-icon" aria-hidden="true">⚠</span>
+                <span class="hero-dashboard__alert-text">{{ line }}</span>
+              </li>
+            </ul>
           </div>
-          <!-- Epic 1 criterion 4: Plain-language alert from API -->
-          <ul class="hero-dashboard__alerts" role="list">
-            <li
-              v-for="(line, i) in alertRows"
-              :key="i"
-              :class="['hero-dashboard__alert-item', riskAlertColorClass]"
-            >
-              <span class="hero-dashboard__alert-icon" aria-hidden="true">⚠</span>
-              <span class="hero-dashboard__alert-text">{{ line }}</span>
-            </li>
-          </ul>
+
+          <div class="hero-dashboard__uv-card hero-dashboard__uv-card--max">
+            <p class="hero-dashboard__uv-label">Maximum Daily UV</p>
+            <div class="hero-dashboard__uv-row">
+              <span class="hero-dashboard__uv-value">{{ uvData.uv_index }}</span>
+              <span :class="['hero-dashboard__badge', riskColorClass]">{{ uvData.risk_level }}</span>
+            </div>
+            <!-- Epic 1 criterion 4: Plain-language alert from API -->
+            <ul class="hero-dashboard__alerts" role="list">
+              <li
+                v-for="(line, i) in alertRows"
+                :key="i"
+                :class="['hero-dashboard__alert-item', riskAlertColorClass]"
+              >
+                <span class="hero-dashboard__alert-icon" aria-hidden="true">⚠</span>
+                <span class="hero-dashboard__alert-text">{{ line }}</span>
+              </li>
+            </ul>
+          </div>
         </template>
       </div>
 
@@ -407,12 +481,29 @@ onMounted(startUvFlow)
   gap: 1rem;
   flex-wrap: wrap;
 }
+.hero-dashboard__uv-card {
+  border-radius: 16px;
+  padding: 0.85rem 1rem;
+  margin-top: 0.6rem;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.hero-dashboard__uv-card--current {
+  background: rgba(255, 255, 255, 0.5);
+}
+.hero-dashboard__uv-card--max {
+  background: rgba(255, 255, 255, 0.4);
+}
 .hero-dashboard__uv-value {
   font-size: 3.5rem;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.04em;
   color: #D54E4E;
+}
+.hero-dashboard__uv-value--current {
+  font-size: 2.5rem;
 }
 /* Epic 1 criterion 3 & 5: WHO/Australian colour-coding for risk badge */
 .hero-dashboard__badge {
@@ -429,6 +520,7 @@ onMounted(startUvFlow)
 .hero-dashboard__badge--orange { background: #ea580c; }
 .hero-dashboard__badge--red { background: #D44A4A; }
 .hero-dashboard__badge--purple { background: #7c3aed; }
+.hero-dashboard__badge--neutral { background: #6b7280; }
 .hero-dashboard__alerts {
   margin: 1rem 0 0;
   padding: 0;
@@ -437,6 +529,7 @@ onMounted(startUvFlow)
   flex-direction: column;
   gap: 0.5rem;
 }
+.hero-dashboard__alerts--compact { margin-top: 0.5rem; }
 .hero-dashboard__alert-item {
   display: flex;
   align-items: flex-start;
@@ -461,6 +554,8 @@ onMounted(startUvFlow)
 .hero-dashboard__alert--red .hero-dashboard__alert-text { color: #D54E4E; }
 .hero-dashboard__alert--purple .hero-dashboard__alert-icon,
 .hero-dashboard__alert--purple .hero-dashboard__alert-text { color: #7c3aed; }
+.hero-dashboard__alert--neutral .hero-dashboard__alert-icon,
+.hero-dashboard__alert--neutral .hero-dashboard__alert-text { color: #6b7280; }
 
 .hero-dashboard__state {
   padding: 1.25rem;

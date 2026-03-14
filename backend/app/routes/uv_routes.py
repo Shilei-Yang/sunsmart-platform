@@ -4,7 +4,7 @@ Includes a simple in-memory cache and basic rate-limit handling for robustness.
 """
 import time
 import requests
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request
 
 from database.db import get_connection
@@ -14,7 +14,10 @@ uv_bp = Blueprint("uv_bp", __name__)
 OPEN_METEO_URL = (
     "https://api.open-meteo.com/v1/forecast"
     "?latitude={lat}&longitude={lon}"
-    "&daily=uv_index_max,uv_index_clear_sky_max&timezone=auto"
+    "&daily=uv_index_max,uv_index_clear_sky_max"
+    "&current=uv_index"
+    "&hourly=uv_index"
+    "&timezone=auto"
 )
 
 OPEN_METEO_ARCHIVE_URL = (
@@ -29,16 +32,23 @@ OPEN_METEO_ARCHIVE_URL = (
 # Value: {"timestamp": float, "payload": dict}
 UV_CACHE = {}
 CACHE_TTL_SECONDS = 600  # 10 minutes
+LOCATION_CACHE = {}
+LOCATION_CACHE_TTL_SECONDS = 1800  # 30 minutes
+FORECAST_TIMEOUT_SECONDS = 8
+ARCHIVE_TIMEOUT_SECONDS = 4
 
 
-def _make_cache_key(lat: float, lon: float, places: int = 2):
-    """Build a cache key from rounded latitude/longitude."""
-    return (round(float(lat), places), round(float(lon), places))
+def _make_cache_key(lat: float, lon: float, places: int = 2, include_history=None):
+    """Build a cache key from rounded latitude/longitude and request shape."""
+    base = (round(float(lat), places), round(float(lon), places))
+    if include_history is None:
+        return base
+    return (base[0], base[1], 1 if include_history else 0)
 
 
-def _get_cached_uv(lat: float, lon: float):
+def _get_cached_uv(lat: float, lon: float, include_history: bool):
     """Return cached UV payload for location if still fresh, otherwise None."""
-    key = _make_cache_key(lat, lon)
+    key = _make_cache_key(lat, lon, include_history=include_history)
     entry = UV_CACHE.get(key)
     if not entry:
         return None
@@ -53,14 +63,40 @@ def _get_cached_uv(lat: float, lon: float):
     return payload
 
 
-def _set_cached_uv(lat: float, lon: float, payload: dict):
+def _set_cached_uv(lat: float, lon: float, payload: dict, include_history: bool):
     """Store UV payload in cache for the given location."""
-    key = _make_cache_key(lat, lon)
+    key = _make_cache_key(lat, lon, include_history=include_history)
     UV_CACHE[key] = {"timestamp": time.time(), "payload": payload}
+
+
+def _get_cached_location(lat: float, lon: float):
+    """Return cached nearest-location tuple (name, state) if fresh."""
+    key = _make_cache_key(lat, lon)
+    entry = LOCATION_CACHE.get(key)
+    if not entry:
+        return None
+    ts = entry.get("timestamp")
+    if ts is None or time.time() - ts > LOCATION_CACHE_TTL_SECONDS:
+        LOCATION_CACHE.pop(key, None)
+        return None
+    return entry.get("value")
+
+
+def _set_cached_location(lat: float, lon: float, name, state):
+    """Store nearest-location tuple (name, state) in cache."""
+    key = _make_cache_key(lat, lon)
+    LOCATION_CACHE[key] = {
+        "timestamp": time.time(),
+        "value": (name, state),
+    }
 
 
 def _get_nearest_location_name(lat: float, lon: float):
     """Look up the nearest location from the database for display (suburb, state). Returns (name, region) or (None, None)."""
+    cached = _get_cached_location(lat, lon)
+    if cached is not None:
+        return cached
+
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -75,10 +111,71 @@ def _get_nearest_location_name(lat: float, lon: float):
                 )
                 row = cur.fetchone()
     except Exception:
+        _set_cached_location(lat, lon, None, None)
         return None, None
     if not row:
+        _set_cached_location(lat, lon, None, None)
         return None, None
-    return row["suburb"], row["state"]
+    name_state = (row["suburb"], row["state"])
+    _set_cached_location(lat, lon, name_state[0], name_state[1])
+    return name_state
+
+
+def _parse_bool(value: str, default: bool = False) -> bool:
+    """Parse common truthy query parameter values."""
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _extract_current_uv(data: dict):
+    """
+    Extract current UV from Open-Meteo payload.
+
+    Priority:
+    1) data["current"]["uv_index"] when present
+    2) nearest hour from data["hourly"] fallback
+    """
+    current = data.get("current") or {}
+    current_uv = current.get("uv_index")
+    if current_uv is not None:
+        try:
+            return float(current_uv)
+        except (TypeError, ValueError):
+            pass
+
+    hourly = data.get("hourly") or {}
+    hourly_times = hourly.get("time") or []
+    hourly_uv = hourly.get("uv_index") or []
+    if not hourly_times or not hourly_uv:
+        return None
+
+    limit = min(len(hourly_times), len(hourly_uv))
+    now_local = datetime.now()
+    nearest_idx = None
+    nearest_delta = None
+
+    for i in range(limit):
+        uv_val = hourly_uv[i]
+        t_str = hourly_times[i]
+        if uv_val is None or not t_str:
+            continue
+        try:
+            hour_dt = datetime.fromisoformat(t_str)
+        except ValueError:
+            continue
+        delta = abs((hour_dt - now_local).total_seconds())
+        if nearest_delta is None or delta < nearest_delta:
+            nearest_delta = delta
+            nearest_idx = i
+
+    if nearest_idx is None:
+        return None
+
+    try:
+        return float(hourly_uv[nearest_idx])
+    except (TypeError, ValueError):
+        return None
 
 
 def uv_index_to_risk(uv_index):
@@ -179,19 +276,21 @@ def get_uv():
     except (ValueError, TypeError):
         return jsonify({"error": "lat and lon must be valid numbers"}), 400
 
+    include_history = _parse_bool(request.args.get("include_history"), default=False)
+
     # If we have a fresh cached payload for this location, return it directly.
-    cached_payload = _get_cached_uv(lat_f, lon_f)
+    cached_payload = _get_cached_uv(lat_f, lon_f, include_history=include_history)
     if cached_payload is not None:
         return jsonify(cached_payload), 200
 
     url = OPEN_METEO_URL.format(lat=lat_f, lon=lon_f)
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=FORECAST_TIMEOUT_SECONDS)
 
         # If Open-Meteo rate limits us (HTTP 429), try to fall back to cached data.
         if response.status_code == 429:
-            cached_payload = _get_cached_uv(lat_f, lon_f)
+            cached_payload = _get_cached_uv(lat_f, lon_f, include_history=include_history)
             if cached_payload is not None:
                 return jsonify(cached_payload), 200
             return jsonify({
@@ -216,8 +315,10 @@ def get_uv():
     date_str = times[0]
     uv_index_val = float(uv_max[0]) if uv_max[0] is not None else 0.0
     uv_clear_val = float(uv_clear[0]) if (uv_clear and uv_clear[0] is not None) else uv_index_val
+    current_uv_val = _extract_current_uv(data)
 
     risk = uv_index_to_risk(uv_index_val)
+    current_risk = uv_index_to_risk(current_uv_val) if current_uv_val is not None else None
 
     # Build 7-day daily max UV for frontend max UV graph (bar chart)
     daily_max_list = []
@@ -225,33 +326,35 @@ def get_uv():
         val = uv_max[i] if i < len(uv_max) and uv_max[i] is not None else 0.0
         daily_max_list.append({"date": times[i], "uv_index_max": float(val)})
 
-    # Past 7 days history (for "Past" tab). Best-effort: if archive fails, return empty history.
+    # Past 7 days history is optional because archive lookup can noticeably
+    # increase response time. Frontend can request it via include_history=1.
     history_list = []
-    try:
-        end_date = date.today()
-        start_date = end_date - timedelta(days=6)
-        archive_url = OPEN_METEO_ARCHIVE_URL.format(
-            lat=lat_f,
-            lon=lon_f,
-            start_date=start_date.isoformat(),
-            end_date=end_date.isoformat(),
-        )
-        archive_res = requests.get(archive_url, timeout=10)
-        archive_res.raise_for_status()
-        archive_data = archive_res.json() or {}
-        archive_daily = archive_data.get("daily") or {}
-        archive_times = archive_daily.get("time") or []
-        archive_uv = archive_daily.get("uv_index_max") or []
-        for i in range(min(7, len(archive_times), len(archive_uv))):
-            uv_val = float(archive_uv[i]) if archive_uv[i] is not None else 0.0
-            d = date.fromisoformat(archive_times[i])
-            history_list.append({
-                "date": archive_times[i],
-                "label": d.strftime("%a"),
-                "uv_index": uv_val,
-            })
-    except Exception:
-        history_list = []
+    if include_history:
+        try:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=6)
+            archive_url = OPEN_METEO_ARCHIVE_URL.format(
+                lat=lat_f,
+                lon=lon_f,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+            archive_res = requests.get(archive_url, timeout=ARCHIVE_TIMEOUT_SECONDS)
+            archive_res.raise_for_status()
+            archive_data = archive_res.json() or {}
+            archive_daily = archive_data.get("daily") or {}
+            archive_times = archive_daily.get("time") or []
+            archive_uv = archive_daily.get("uv_index_max") or []
+            for i in range(min(7, len(archive_times), len(archive_uv))):
+                uv_val = float(archive_uv[i]) if archive_uv[i] is not None else 0.0
+                d = date.fromisoformat(archive_times[i])
+                history_list.append({
+                    "date": archive_times[i],
+                    "label": d.strftime("%a"),
+                    "uv_index": uv_val,
+                })
+        except Exception:
+            history_list = []
 
     # Resolve nearest location from DB for display (so frontend can show suburb name instead of "Your location").
     location_name, state = _get_nearest_location_name(lat_f, lon_f)
@@ -263,6 +366,10 @@ def get_uv():
         "date": date_str,
         "latitude": lat_f,
         "longitude": lon_f,
+        "current_uv": current_uv_val,
+        "current_risk_level": current_risk["risk_level"] if current_risk else None,
+        "current_color": current_risk["color"] if current_risk else None,
+        "current_message": current_risk["message"] if current_risk else None,
         "uv_index": uv_index_val,
         "uv_index_clear_sky": uv_clear_val,
         "risk_level": risk["risk_level"],
@@ -277,6 +384,6 @@ def get_uv():
         payload["region"] = region
 
     # Store successful response in cache for this location.
-    _set_cached_uv(lat_f, lon_f, payload)
+    _set_cached_uv(lat_f, lon_f, payload, include_history=include_history)
 
     return jsonify(payload), 200
