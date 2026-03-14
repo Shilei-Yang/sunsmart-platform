@@ -50,13 +50,13 @@ const longTerm = [
   margin: 0 0 0.5rem;
   font-size: 1.25rem;
   font-weight: 700;
-  color: #0369a1;
+  color: var(--uv-primary, #D8613C);
   letter-spacing: -0.02em;
 }
 .uv-impacts__intro {
   margin: 0 0 1.25rem;
   font-size: 0.9375rem;
-  color: #64748b;
+  color: var(--uv-text-muted, #8A8A8A);
   line-height: 1.55;
 }
 .uv-impacts__grid {
@@ -68,14 +68,14 @@ const longTerm = [
   background: #fff;
   border-radius: 16px;
   padding: 1.5rem 1.75rem;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--uv-grid, #E6E1DA);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 .uv-impacts__card-title {
   margin: 0 0 0.75rem;
   font-size: 1.0625rem;
   font-weight: 700;
-  color: #334155;
+  color: var(--uv-text, #4A4A4A);
 }
 .uv-impacts__list {
   margin: 0;
@@ -84,7 +84,7 @@ const longTerm = [
 .uv-impacts__item {
   margin-bottom: 0.4rem;
   font-size: 0.9375rem;
-  color: #475569;
+  color: var(--uv-text-muted, #8A8A8A);
   line-height: 1.45;
 }
 .uv-impacts__item:last-child {

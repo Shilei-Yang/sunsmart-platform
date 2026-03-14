@@ -11,6 +11,8 @@ const props = defineProps({
   // Past 7 days history format: [{ date: 'YYYY-MM-DD', label: 'Mon', uv_index: 6.2 }, ...]
   history: { type: Array, default: () => [] },
   view: { type: String, default: 'today' },
+  /** When true, use UVIBE dashboard styling: beige bars, muted grid, no inner title */
+  dashboardStyle: { type: Boolean, default: false },
 })
 
 const MAX_UV_SCALE = 13
@@ -72,8 +74,8 @@ function barColorForUv(v) {
 </script>
 
 <template>
-  <div class="max-uv-graph">
-    <!-- Soft UV gradient panel (prototype-style) -->
+  <div class="max-uv-graph" :class="{ 'max-uv-graph--dashboard': dashboardStyle && view === '7days' }">
+    <!-- Soft UV gradient panel (prototype-style); transparent when in dashboard card -->
     <div class="max-uv-graph__panel">
       <!-- Today: single visual "meter" for max UV -->
       <template v-if="view === 'today' && bars.length">
@@ -100,10 +102,10 @@ function barColorForUv(v) {
           <p class="max-uv-graph__today-label">Today’s max UV index</p>
         </div>
       </template>
-      <!-- 7 Days: next 7 days UV forecast bar chart (pastel theme) -->
+      <!-- 7 Days: next 7 days UV forecast bar chart (weekly forecast / dashboard style) -->
       <template v-else-if="view === '7days'">
-        <div class="forecast-chart">
-          <div class="forecast-chart__header">
+        <div class="forecast-chart" :class="{ 'forecast-chart--dashboard': dashboardStyle }">
+          <div v-if="!dashboardStyle" class="forecast-chart__header">
             <h3 class="forecast-chart__title">Max UV Index – Next 7 Days</h3>
           </div>
 
@@ -113,13 +115,17 @@ function barColorForUv(v) {
               <span v-for="n in 5" :key="n" class="forecast-chart__grid-line" />
             </div>
 
-            <!-- Danger threshold (11+) -->
-            <div class="forecast-chart__threshold" :style="{ top: `${(1 - 11 / MAX_UV_SCALE) * 100}%` }">
+            <!-- Danger threshold (11+) - hidden in dashboard style for softer look -->
+            <div
+              v-if="!dashboardStyle"
+              class="forecast-chart__threshold"
+              :style="{ top: `${(1 - 11 / MAX_UV_SCALE) * 100}%` }"
+            >
               <span class="forecast-chart__threshold-line" />
               <span class="forecast-chart__threshold-label">Danger Threshold (11+)</span>
             </div>
 
-            <!-- Bars -->
+            <!-- Bars: dashboard uses single beige; otherwise risk-based colors -->
             <div class="forecast-chart__bars">
               <div
                 v-for="item in forecast"
@@ -129,9 +135,10 @@ function barColorForUv(v) {
                 <div class="forecast-chart__bar-wrap">
                   <div
                     class="forecast-chart__bar"
+                    :class="{ 'forecast-chart__bar--dashboard': dashboardStyle }"
                     :style="{
                       height: `${(item.uv_index / MAX_UV_SCALE) * 100}%`,
-                      background: barColorForUv(item.uv_index),
+                      background: dashboardStyle ? undefined : barColorForUv(item.uv_index),
                     }"
                     :title="`${item.label}: ${item.uv_index}`"
                   />
@@ -186,7 +193,7 @@ function barColorForUv(v) {
         </div>
       </template>
     </div>
-    <p class="max-uv-graph__legend">Max UV Index (daily)</p>
+    <p v-if="view !== '7days' || !dashboardStyle" class="max-uv-graph__legend">Max UV Index (daily)</p>
   </div>
 </template>
 
@@ -209,6 +216,12 @@ function barColorForUv(v) {
   );
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.7);
+}
+.max-uv-graph--dashboard .max-uv-graph__panel {
+  background: transparent;
+  padding: 0;
+  min-height: 0;
+  border: none;
 }
 .max-uv-graph__today {
   display: flex;
@@ -409,6 +422,25 @@ function barColorForUv(v) {
 .forecast-chart__value {
   font-size: 0.7rem;
   color: #4f6f8f;
+}
+
+/* UVIBE dashboard style: beige bars, muted grid, soft weather chart */
+.forecast-chart--dashboard .forecast-chart__plot {
+  background: #fff;
+  border: 1px solid #E6E1DA;
+  box-shadow: none;
+}
+.forecast-chart--dashboard .forecast-chart__grid-line {
+  background: #E6E1DA;
+}
+.forecast-chart__bar--dashboard {
+  background: #E9D5B5 !important;
+  border-radius: 10px 10px 0 0;
+  box-shadow: none;
+}
+.forecast-chart--dashboard .forecast-chart__x-label,
+.forecast-chart--dashboard .forecast-chart__value {
+  color: #8A8A8A;
 }
 
 @media (max-width: 700px) {
