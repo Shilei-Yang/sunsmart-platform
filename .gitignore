@@ -8,6 +8,8 @@ __pycache__/
 
 # Ignore environment variables
 .env
+.env.development
+.env.local
 
 # Distribution / packaging
 .Python
