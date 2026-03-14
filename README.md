@@ -11,7 +11,46 @@ Sun Smart UV protection awareness platform.
 
 Run the backend and frontend in **separate terminals**.
 
+The current implementation focuses on:
+- **Epic 1 – Track UV Levels**: fetch live UV data from Open-Meteo, classify risk using WHO/Australian UV ranges, show colour-coded risk and plain-language alerts.
+- **Database-backed location search**: postcode/suburb lookup from PostgreSQL, used by the homepage search bar to fetch UV for a selected location.
+
 ### Backend (Flask)
+
+#### PostgreSQL setup
+
+1. Install PostgreSQL locally (for example via Homebrew on macOS) and ensure the PostgreSQL **server is running**.
+2. Create a database user and database, e.g.:
+
+   ```sql
+   CREATE DATABASE uvibe;
+   CREATE USER uvibe_user WITH PASSWORD 'choose-a-strong-password';
+   GRANT ALL PRIVILEGES ON DATABASE uvibe TO uvibe_user;
+   ```
+
+3. Set the following environment variables (for your shell or in a backend `.env` file):
+
+   ```bash
+   export DB_HOST=localhost
+   export DB_PORT=5432
+   export DB_NAME=uvibe
+   export DB_USER=uvibe_user
+   export DB_PASSWORD=your_password_here
+   ```
+
+4. From the `backend/` folder, initialise the schema and import the prepared datasets:
+
+   ```bash
+   cd backend
+   # create tables
+   python -m database.init_db
+
+   # import locations and UV risk levels
+   python -m database.import_datasets
+   ```
+
+   These commands create the `location`, `uv_risk_level` and optional awareness tables,
+   and load `database/australian_postcodes_cleaned.csv` and `database/uv_risk_levels.csv`.
 
 #### Windows (Command Prompt or PowerShell)
 
