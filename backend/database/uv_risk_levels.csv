@@ -1,0 +1,6 @@
+category,min_uv,max_uv
+Low,0,2
+Moderate,3,5
+High,6,7
+Very High,8,10
+Extreme,11,20
