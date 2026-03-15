@@ -135,16 +135,26 @@ function barColorForUv(v) {
                 <div class="forecast-chart__bar-wrap">
                   <div
                     class="forecast-chart__bar"
-                    :class="{ 'forecast-chart__bar--dashboard': dashboardStyle }"
                     :style="{
                       height: `${(item.uv_index / MAX_UV_SCALE) * 100}%`,
-                      background: dashboardStyle ? undefined : barColorForUv(item.uv_index),
+                      background: barColorForUv(item.uv_index),
                     }"
                     :title="`${item.label}: ${item.uv_index}`"
                   />
                 </div>
                 <div class="forecast-chart__x-label">{{ item.label }}</div>
                 <div class="forecast-chart__value">{{ item.uv_index.toFixed(1) }}</div>
+              </div>
+            </div>
+
+            <div class="forecast-chart__uv-legend" aria-label="UV index color legend">
+              <div class="forecast-chart__uv-legend-bar" />
+              <div class="forecast-chart__uv-legend-labels">
+                <span>Low (0-2)</span>
+                <span>Moderate (3-5)</span>
+                <span>High (6-7)</span>
+                <span>Very High (8-10)</span>
+                <span>Extreme (11+)</span>
               </div>
             </div>
           </div>
@@ -417,30 +427,83 @@ function barColorForUv(v) {
 .forecast-chart__x-label {
   font-size: 0.75rem;
   font-weight: 700;
-  color: #4f6f8f;
+  color: #111827;
 }
 .forecast-chart__value {
   font-size: 0.7rem;
-  color: #4f6f8f;
+  color: #111827;
+}
+.forecast-chart__uv-legend {
+  margin-top: 0.9rem;
+}
+.forecast-chart__uv-legend-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #7bd77b 0%,
+    #f3df72 35%,
+    #f3a65a 55%,
+    #f16b6b 78%,
+    #a974e8 100%
+  );
+}
+.forecast-chart__uv-legend-labels {
+  margin-top: 0.45rem;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+  font-size: 0.66rem;
+  color: #111827;
+}
+.forecast-chart__uv-legend-labels span {
+  text-align: center;
+  line-height: 1.25;
 }
 
-/* UVIBE dashboard style: beige bars, muted grid, soft weather chart */
+/* UVIBE dashboard style: transparent plot, muted grid, seamless integration */
 .forecast-chart--dashboard .forecast-chart__plot {
-  background: #fff;
-  border: 1px solid #E6E1DA;
+  background: transparent;
+  border: none;
   box-shadow: none;
+  padding: 0.5rem 0 0;
+}
+.forecast-chart--dashboard .forecast-chart__grid {
+  inset: 0.5rem 0 2.2rem 0;
 }
 .forecast-chart--dashboard .forecast-chart__grid-line {
-  background: #E6E1DA;
+  background: var(--uv-grid, #E6E1DA);
+  opacity: 0.5;
 }
-.forecast-chart__bar--dashboard {
-  background: #E9D5B5 !important;
-  border-radius: 10px 10px 0 0;
-  box-shadow: none;
+.forecast-chart--dashboard .forecast-chart__bars {
+  min-height: 180px;
 }
-.forecast-chart--dashboard .forecast-chart__x-label,
+.forecast-chart--dashboard .forecast-chart__bar-wrap {
+  height: 140px;
+}
+.forecast-chart--dashboard .forecast-chart__bar {
+  max-width: 38px;
+  border-radius: 8px 8px 6px 6px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+.forecast-chart--dashboard .forecast-chart__x-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--uv-text, #4A4A4A);
+}
 .forecast-chart--dashboard .forecast-chart__value {
-  color: #8A8A8A;
+  font-size: 0.66rem;
+  color: var(--uv-text-muted, #8A8A8A);
+}
+.forecast-chart--dashboard .forecast-chart__uv-legend {
+  margin-top: 0.6rem;
+}
+.forecast-chart--dashboard .forecast-chart__uv-legend-bar {
+  height: 6px;
+}
+.forecast-chart--dashboard .forecast-chart__uv-legend-labels {
+  font-size: 0.6rem;
+  color: var(--uv-text-muted, #8A8A8A);
 }
 
 @media (max-width: 700px) {
