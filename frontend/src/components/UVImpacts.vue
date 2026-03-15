@@ -22,7 +22,7 @@ const longTerm = [
       Understanding how UV exposure affects your skin can help you stay sun smart.
     </p>
     <div class="uv-impacts__grid">
-      <div class="uv-impacts__card">
+      <div class="uv-impacts__card uv-card">
         <h3 class="uv-impacts__card-title">Short-term effects</h3>
         <ul class="uv-impacts__list">
           <li v-for="item in shortTerm" :key="item" class="uv-impacts__item">
@@ -30,7 +30,7 @@ const longTerm = [
           </li>
         </ul>
       </div>
-      <div class="uv-impacts__card">
+      <div class="uv-impacts__card uv-card">
         <h3 class="uv-impacts__card-title">Long-term effects</h3>
         <ul class="uv-impacts__list">
           <li v-for="item in longTerm" :key="item" class="uv-impacts__item">
@@ -44,6 +44,7 @@ const longTerm = [
 
 <style scoped>
 .uv-impacts {
+  margin-top: 2rem;
   margin-bottom: 0;
 }
 .uv-impacts__title {
@@ -63,13 +64,6 @@ const longTerm = [
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.25rem;
-}
-.uv-impacts__card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 1.5rem 1.75rem;
-  border: 1px solid var(--uv-grid, #E6E1DA);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 .uv-impacts__card-title {
   margin: 0 0 0.75rem;
