@@ -6,12 +6,12 @@
   - Criterion 4: Plain-language alert from API message; criterion 5: auto-update on refresh/location change.
 -->
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, inject } from 'vue'
 import MaxUVGraph from '@/components/MaxUVGraph.vue'
 
 // Match backend port (default 5000). Override with VITE_API_BASE in .env if you use e.g. 5001 on macOS.
 const apiBase = import.meta.env.VITE_API_BASE ?? 'http://localhost:5000'
-const uvData = ref(null)
+const uvData = inject('uvData') ?? ref(null)
 const uvStatus = ref(null)
 const uvError = ref(null)
 
@@ -453,9 +453,9 @@ onMounted(startUvFlow)
   gap: 0.5rem;
   flex-wrap: wrap;
 }
-.hero-dashboard__location-heading {
+ .hero-dashboard__location-heading {
   margin: 0;
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: #D54E4E;
@@ -589,12 +589,12 @@ onMounted(startUvFlow)
 }
 
 @media (min-width: 640px) {
-  .hero-dashboard__uv-value { font-size: 4rem; }
-  .hero-dashboard__location-heading { font-size: 2rem; }
+  .hero-dashboard__uv-value { font-size: 3.6rem; }
+  .hero-dashboard__location-heading { font-size: 1.8rem; }
 }
 @media (min-width: 900px) {
   .hero-dashboard { padding: 2.5rem 3rem; }
-  .hero-dashboard__uv-value { font-size: 4.5rem; }
-  .hero-dashboard__location-heading { font-size: 2.25rem; }
+  .hero-dashboard__uv-value { font-size: 4rem; }
+  .hero-dashboard__location-heading { font-size: 2rem; }
 }
 </style>

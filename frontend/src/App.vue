@@ -1,15 +1,21 @@
 <!--
   Homepage — UVIBE dashboard layout.
-  Warm neutral background, top nav (Impact active), hero with two-column UV dashboard,
-  below-hero: Why UV Protection, UV Impacts, Skin Types. Backend /api/uv unchanged.
+  Warm neutral background, top nav, hero with UV dashboard,
+  below-hero: Why UV Protection + tab content (Impact, Personalised Experience, Sunscreen Management, etc.).
+  Skin types live on the Personalised Experience page. Backend /api/uv unchanged.
 -->
 <script setup>
-import { ref } from 'vue'
+import { ref, provide } from 'vue'
 import UVDashboard from '@/components/UVDashboard.vue'
 import UVImpacts from '@/components/UVImpacts.vue'
-import SkinTypes from '@/components/SkinTypes.vue'
+import CancerVisualisation from '@/components/CancerVisualisation.vue'
+import MythFactCarousel from '@/components/MythFactCarousel.vue'
+import PersonalisedExperience from '@/components/PersonalisedExperience.vue'
+import SunscreenManagement from '@/components/SunscreenManagement.vue'
 
 const infoTab = ref('uv-impacts')
+const uvData = ref(null)
+provide('uvData', uvData)
 </script>
 
 <template>
@@ -18,8 +24,13 @@ const infoTab = ref('uv-impacts')
     <header class="homepage__header" aria-label="Main navigation">
       <div class="homepage__header-inner">
         <div class="homepage__brand">
-          <span class="homepage__brand-text">UVIBE</span>
-          <span class="homepage__brand-icon" aria-hidden="true">☀</span>
+          <div class="homepage__brand-mark">
+            <span class="homepage__brand-text">UVibe</span>
+            <span class="homepage__brand-icon" aria-hidden="true">☀</span>
+          </div>
+          <p class="homepage__brand-tagline">
+            Know the sun before it knows your skin
+          </p>
         </div>
         <nav class="homepage__nav" aria-label="Information sections">
           <button
@@ -76,31 +87,35 @@ const infoTab = ref('uv-impacts')
         <!-- Below-hero: tab content (Impact = UV Impacts + Why; others coming soon) -->
         <div class="homepage__columns">
           <div class="homepage__col homepage__col--left">
-            <section class="homepage__why">
-              <h2 class="homepage__why-title">Why UV Protection Matters</h2>
-              <p class="homepage__why-text">
-                Australia has some of the highest UV levels in the world. Prolonged exposure to
-                ultraviolet radiation can damage your skin and eyes and increase the risk of skin
-                cancer. Understanding UV impacts helps you make informed choices about sun protection.
-              </p>
-              <p class="homepage__why-text">
-                Check the max UV index for your location and take simple steps: seek shade when the
-                UV is high, wear protective clothing and a hat, use broad-spectrum sunscreen, and
-                wear sunglasses.
-              </p>
-            </section>
-
-            <section v-if="infoTab === 'uv-impacts'">
+            <!-- Impact: Why UV, UV Impacts, Skin Cancers, Myth/Fact -->
+            <template v-if="infoTab === 'uv-impacts'">
+              <section class="homepage__why">
+                <h2 class="homepage__why-title">Why UV Protection Matters</h2>
+                <p class="homepage__why-text">
+                  Australia has some of the highest UV levels in the world. Prolonged exposure to
+                  ultraviolet radiation can damage your skin and eyes and increase the risk of skin
+                  cancer. Understanding UV impacts helps you make informed choices about sun protection.
+                </p>
+                <p class="homepage__why-text">
+                  Check the max UV index for your location and take simple steps: seek shade when the
+                  UV is high, wear protective clothing and a hat, use broad-spectrum sunscreen, and
+                  wear sunglasses.
+                </p>
+              </section>
               <UVImpacts />
+              <CancerVisualisation />
+              <MythFactCarousel />
+            </template>
+            <section v-else-if="infoTab === 'personalised'">
+              <PersonalisedExperience />
+            </section>
+            <section v-else-if="infoTab === 'sunscreen'">
+              <SunscreenManagement />
             </section>
             <section v-else class="homepage__coming-wrap">
               <p class="homepage__coming">Content for this section is coming soon.</p>
             </section>
           </div>
-
-          <aside class="homepage__col homepage__col--right" aria-label="Skin types">
-            <SkinTypes />
-          </aside>
         </div>
       </div>
     </main>
@@ -121,6 +136,7 @@ const infoTab = ref('uv-impacts')
   --uv-grid: #E6E1DA;
   --uv-text: #4A4A4A;
   --uv-text-muted: #8A8A8A;
+  --uv-card: #FFFFFF;
   background: var(--uv-bg);
   color: var(--uv-text);
 }
@@ -135,25 +151,37 @@ const infoTab = ref('uv-impacts')
   max-width: 1280px;
   margin: 0 auto;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1.5rem;
   flex-wrap: wrap;
 }
 .homepage__brand {
   display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.homepage__brand-mark {
+  display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 .homepage__brand-text {
-  font-weight: 700;
-  font-size: 1.25rem;
-  letter-spacing: 0.02em;
+  font-weight: 800;
+  font-size: 2rem;
+  letter-spacing: 0.04em;
   color: var(--uv-primary);
 }
 .homepage__brand-icon {
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   color: var(--uv-primary);
+}
+.homepage__brand-tagline {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--uv-text-muted);
 }
 .homepage__nav {
   display: flex;
@@ -213,21 +241,22 @@ const infoTab = ref('uv-impacts')
 }
 .homepage__why {
   margin-bottom: 2rem;
-  padding: 1.5rem 1.75rem;
-  background: #fff;
+  padding: 1.75rem 2rem;
+  background: var(--uv-card);
   border-radius: 16px;
   border: 1px solid var(--uv-grid);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 .homepage__why-title {
-  margin: 0 0 1rem;
+  margin: 0 0 1.25rem;
   font-size: 1.375rem;
   font-weight: 700;
   color: var(--uv-primary);
   letter-spacing: -0.02em;
+  line-height: 1.3;
 }
 .homepage__why-text {
-  margin: 0 0 0.75rem;
+  margin: 0 0 1rem;
   font-size: 1rem;
   line-height: 1.65;
   color: var(--uv-text-muted);
@@ -259,12 +288,8 @@ const infoTab = ref('uv-impacts')
     gap: 2.5rem;
   }
   .homepage__col--left {
-    flex: 2;
+    flex: 1;
     min-width: 0;
-  }
-  .homepage__col--right {
-    flex: 1.2;
-    min-width: 320px;
   }
 }
 </style>
