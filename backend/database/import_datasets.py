@@ -15,48 +15,92 @@ import csv
 from pathlib import Path
 
 from database.db import get_connection
+from psycopg2.extras import execute_values
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "database"
 
 POSTCODES_CSV = DATA_DIR / "australian_postcodes_cleaned.csv"
 UV_RISK_CSV = DATA_DIR / "uv_risk_levels.csv"
+LOCATION_BATCH_SIZE = 1000
+
+
+def _chunked(items, size):
+    """Yield fixed-size chunks from a list."""
+    for idx in range(0, len(items), size):
+        yield items[idx : idx + size]
 
 
 def import_locations() -> None:
+    print("[location] Import started.")
+    print(f"[location] Source file: {POSTCODES_CSV}")
+
     if not POSTCODES_CSV.exists():
         print(f"[location] Skipped – CSV not found: {POSTCODES_CSV}")
         return
 
-    count = 0
+    rows_to_import = []
+    seen_keys = set()
+    skipped = 0
+    duplicates_removed = 0
+
+    with POSTCODES_CSV.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            postcode = row.get("postcode")
+            suburb = row.get("suburb")
+            state = row.get("state")
+            lat = row.get("lat")
+            lon = row.get("lon")
+
+            if not (postcode and suburb and state and lat and lon):
+                skipped += 1
+                continue
+
+            dedupe_key = (postcode.strip(), suburb.strip().lower())
+            if dedupe_key in seen_keys:
+                duplicates_removed += 1
+                continue
+
+            try:
+                rows_to_import.append((postcode, suburb, state, float(lat), float(lon)))
+                seen_keys.add(dedupe_key)
+            except ValueError:
+                skipped += 1
+
+    total_rows = len(rows_to_import)
+    print(f"[location] Total valid rows loaded: {total_rows}")
+    print(f"[location] Total skipped rows: {skipped}")
+    print(f"[location] Total duplicate rows removed: {duplicates_removed}")
+
+    if total_rows == 0:
+        print("[location] No valid rows to import.")
+        return
+
+    upsert_sql = """
+        INSERT INTO location (postcode, suburb, state, latitude, longitude)
+        VALUES %s
+        ON CONFLICT (postcode, suburb, state)
+        DO UPDATE SET latitude = EXCLUDED.latitude,
+                      longitude = EXCLUDED.longitude;
+    """
+
+    imported = 0
     with get_connection() as conn:
         with conn.cursor() as cur:
-            with POSTCODES_CSV.open("r", encoding="utf-8-sig", newline="") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    postcode = row.get("postcode")
-                    suburb = row.get("suburb")
-                    state = row.get("state")
-                    lat = row.get("lat")
-                    lon = row.get("lon")
-
-                    if not (postcode and suburb and state and lat and lon):
-                        continue
-
-                    cur.execute(
-                        """
-                        INSERT INTO location (postcode, suburb, state, latitude, longitude)
-                        VALUES (%s, %s, %s, %s, %s)
-                        ON CONFLICT (postcode, suburb, state)
-                        DO UPDATE SET latitude = EXCLUDED.latitude,
-                                      longitude = EXCLUDED.longitude;
-                        """,
-                        (postcode, suburb, state, float(lat), float(lon)),
-                    )
-                    count += 1
+            for batch in _chunked(rows_to_import, LOCATION_BATCH_SIZE):
+                execute_values(
+                    cur,
+                    upsert_sql,
+                    batch,
+                    page_size=LOCATION_BATCH_SIZE,
+                )
+                imported += len(batch)
+                print(f"[location] Batch progress: {imported}/{total_rows}")
         conn.commit()
 
-    print(f"[location] Imported/updated {count} rows from {POSTCODES_CSV.name}")
+    print(f"[location] Imported/updated {imported} rows from {POSTCODES_CSV.name}")
+    print("[location] Import finished.")
 
 
 def import_uv_risk_levels() -> None:
