@@ -461,21 +461,49 @@ function barColorForUv(v) {
   line-height: 1.25;
 }
 
-/* UVIBE dashboard style: beige bars, muted grid, soft weather chart */
+/* UVIBE dashboard style: transparent plot, muted grid, seamless integration */
 .forecast-chart--dashboard .forecast-chart__plot {
-  background: #fff;
-  border: 1px solid #E6E1DA;
+  background: transparent;
+  border: none;
   box-shadow: none;
+  padding: 0.5rem 0 0;
+}
+.forecast-chart--dashboard .forecast-chart__grid {
+  inset: 0.5rem 0 2.2rem 0;
 }
 .forecast-chart--dashboard .forecast-chart__grid-line {
-  background: #E6E1DA;
+  background: var(--uv-grid, #E6E1DA);
+  opacity: 0.5;
 }
-.forecast-chart--dashboard .forecast-chart__x-label,
+.forecast-chart--dashboard .forecast-chart__bars {
+  min-height: 180px;
+}
+.forecast-chart--dashboard .forecast-chart__bar-wrap {
+  height: 140px;
+}
+.forecast-chart--dashboard .forecast-chart__bar {
+  max-width: 38px;
+  border-radius: 8px 8px 6px 6px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+.forecast-chart--dashboard .forecast-chart__x-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--uv-text, #4A4A4A);
+}
 .forecast-chart--dashboard .forecast-chart__value {
-  color: #111827;
+  font-size: 0.66rem;
+  color: var(--uv-text-muted, #8A8A8A);
+}
+.forecast-chart--dashboard .forecast-chart__uv-legend {
+  margin-top: 0.6rem;
+}
+.forecast-chart--dashboard .forecast-chart__uv-legend-bar {
+  height: 6px;
 }
 .forecast-chart--dashboard .forecast-chart__uv-legend-labels {
-  color: #111827;
+  font-size: 0.6rem;
+  color: var(--uv-text-muted, #8A8A8A);
 }
 
 @media (max-width: 700px) {

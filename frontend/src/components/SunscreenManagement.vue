@@ -4,6 +4,7 @@
 -->
 <script setup>
 import { inject, computed } from 'vue'
+import sunscreenBg from '@/assets/pexels-armin-rimoldi-5269653.jpg'
 
 const uvData = inject('uvData', null)
 const data = computed(() => uvData?.value ?? null)
@@ -28,6 +29,19 @@ const spfRecommendation = computed(() => {
   return { spf: '50+', label: 'SPF 50+', explanation: 'Extreme UV. Use SPF 50+ and minimise time in direct sun.' }
 })
 
+function uvColorToHex(color) {
+  switch (color) {
+    case 'green': return '#16a34a'
+    case 'yellow': return '#ca8a04'
+    case 'orange': return '#ea580c'
+    case 'red': return '#D54E4E'
+    case 'purple': return '#7c3aed'
+    default: return '#6b7280'
+  }
+}
+
+const uvColorHex = computed(() => uvColorToHex(riskColor.value))
+
 const dosageItems = [
   { area: 'Face & neck', amount: '1 teaspoon' },
   { area: 'Each arm', amount: '1 teaspoon' },
@@ -38,93 +52,151 @@ const dosageItems = [
 
 <template>
   <section class="sunscreen">
-    <h2 class="sunscreen__title">Sunscreen Management</h2>
-    <p class="sunscreen__intro">
-      Recommendations based on the current UV index for your location.
-    </p>
+    <img :src="sunscreenBg" alt="" class="sunscreen__bg" aria-hidden="true" />
+    <div class="sunscreen__overlay" />
 
-    <!-- 1. Current UV Summary Card -->
-    <div class="sunscreen__card uv-card">
-      <h3 class="sunscreen__card-title">Current UV Summary</h3>
-      <div v-if="data" class="sunscreen__uv-summary">
-        <p class="sunscreen__location">{{ locationName }}</p>
-        <div class="sunscreen__uv-row">
-          <span class="sunscreen__uv-value">{{ uvValue }}</span>
-          <span class="sunscreen__risk-badge" :class="riskColor ? `sunscreen__risk-badge--${riskColor}` : ''">
-            {{ riskLevel }}
-          </span>
+    <div class="sunscreen__body">
+      <div class="sunscreen__header">
+        <h2 class="sunscreen__title">Sunscreen Management</h2>
+        <p class="sunscreen__intro">
+          Recommendations based on the current UV index for your location.
+        </p>
+      </div>
+
+      <!-- 1. Current UV Summary Card -->
+      <div class="sunscreen__card sunscreen__card--glass sunscreen__card--uv" :style="data ? { borderLeftColor: uvColorHex } : {}">
+        <h3 class="sunscreen__card-title">Current UV Summary</h3>
+        <div v-if="data" class="sunscreen__uv-summary">
+          <p class="sunscreen__location">{{ locationName }}</p>
+          <div class="sunscreen__uv-row">
+            <span class="sunscreen__uv-value" :style="{ color: uvColorHex }">{{ uvValue }}</span>
+            <span class="sunscreen__risk-badge" :class="riskColor ? `sunscreen__risk-badge--${riskColor}` : ''">
+              {{ riskLevel }}
+            </span>
+          </div>
         </div>
+        <p v-else class="sunscreen__no-data">Load the dashboard above to see UV for your location.</p>
       </div>
-      <p v-else class="sunscreen__no-data">Load the dashboard above to see UV for your location.</p>
-    </div>
 
-    <!-- 2. Recommended Protection Card -->
-    <div class="sunscreen__card uv-card">
-      <h3 class="sunscreen__card-title">Recommended Protection</h3>
-      <div v-if="spfRecommendation.spf" class="sunscreen__spf-block">
-        <p class="sunscreen__spf-value">{{ spfRecommendation.label }}</p>
-        <p class="sunscreen__spf-explanation">{{ spfRecommendation.explanation }}</p>
+      <!-- 2. Recommended Protection Card -->
+      <div class="sunscreen__card sunscreen__card--glass">
+        <h3 class="sunscreen__card-title">Recommended Protection</h3>
+        <div v-if="spfRecommendation.spf" class="sunscreen__spf-block">
+          <p class="sunscreen__spf-value">{{ spfRecommendation.label }}</p>
+          <p class="sunscreen__spf-explanation">{{ spfRecommendation.explanation }}</p>
+        </div>
+        <p v-else class="sunscreen__no-data">UV data is needed to recommend SPF.</p>
       </div>
-      <p v-else class="sunscreen__no-data">UV data is needed to recommend SPF.</p>
-    </div>
 
-    <!-- 3. Sunscreen Dosage Card -->
-    <div class="sunscreen__card uv-card">
-      <h3 class="sunscreen__card-title">Sunscreen Dosage</h3>
-      <p class="sunscreen__dosage-intro">
-        Apply approximately <strong>35 ml</strong> (about a shot glass) of sunscreen to cover exposed skin.
-      </p>
-      <ul class="sunscreen__dosage-list" role="list">
-        <li
-          v-for="item in dosageItems"
-          :key="item.area"
-          class="sunscreen__dosage-item"
-        >
-          <span class="sunscreen__dosage-area">{{ item.area }}</span>
-          <span class="sunscreen__dosage-amount">{{ item.amount }}</span>
-        </li>
-      </ul>
-    </div>
+      <!-- 3. Sunscreen Dosage Card -->
+      <div class="sunscreen__card sunscreen__card--glass">
+        <h3 class="sunscreen__card-title">Sunscreen Dosage</h3>
+        <p class="sunscreen__dosage-intro">
+          Apply approximately <strong>35 ml</strong> (about a shot glass) of sunscreen to cover exposed skin.
+        </p>
+        <ul class="sunscreen__dosage-list" role="list">
+          <li
+            v-for="item in dosageItems"
+            :key="item.area"
+            class="sunscreen__dosage-item"
+          >
+            <span class="sunscreen__dosage-area">{{ item.area }}</span>
+            <span class="sunscreen__dosage-amount">{{ item.amount }}</span>
+          </li>
+        </ul>
+      </div>
 
-    <!-- 4. Reapplication Reminder Card -->
-    <div class="sunscreen__card uv-card">
-      <h3 class="sunscreen__card-title">Reapplication</h3>
-      <p class="sunscreen__reapply-text">
-        Reapply every <strong>2 hours</strong> when outdoors and after swimming or sweating.
-      </p>
+      <!-- 4. Reapplication Reminder Card -->
+      <div class="sunscreen__card sunscreen__card--glass">
+        <h3 class="sunscreen__card-title">Reapplication</h3>
+        <p class="sunscreen__reapply-text">
+          Reapply every <strong>2 hours</strong> when outdoors and after swimming or sweating.
+        </p>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
+/* ── Section wrapper — immersive photo background ── */
 .sunscreen {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
   margin-bottom: 0;
+}
+
+.sunscreen__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 35%;
+}
+
+.sunscreen__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    170deg,
+    rgba(35, 25, 18, 0.72) 0%,
+    rgba(40, 30, 20, 0.62) 35%,
+    rgba(45, 32, 22, 0.52) 65%,
+    rgba(50, 35, 25, 0.42) 100%
+  );
+  pointer-events: none;
+}
+
+/* ── Content layer ── */
+.sunscreen__body {
+  position: relative;
+  z-index: 1;
+  padding: 2.25rem 2rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.sunscreen__header {
+  margin-bottom: 0.25rem;
 }
 .sunscreen__title {
   margin: 0 0 0.5rem;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--uv-primary, #D8613C);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #fff;
   letter-spacing: -0.02em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 .sunscreen__intro {
-  margin: 0 0 1.25rem;
+  margin: 0;
   font-size: 0.9375rem;
-  color: var(--uv-text-muted, #8A8A8A);
+  color: rgba(255, 255, 255, 0.65);
   line-height: 1.55;
 }
 
+/* ── Frosted glass cards ── */
 .sunscreen__card {
-  margin-bottom: 1.25rem;
-}
-.sunscreen__card:last-child {
-  margin-bottom: 0;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
 }
 .sunscreen__card-title {
   margin: 0 0 0.75rem;
   font-size: 1.0625rem;
   font-weight: 700;
-  color: var(--uv-text, #4A4A4A);
+  color: #fff;
+}
+
+/* UV summary card — accent border on left */
+.sunscreen__card--uv {
+  border-left: 4px solid rgba(255, 255, 255, 0.25);
+  transition: border-left-color 0.4s ease;
 }
 
 .sunscreen__uv-summary {
@@ -134,26 +206,28 @@ const dosageItems = [
   margin: 0 0 0.5rem;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--uv-value, #D54E4E);
+  color: rgba(255, 255, 255, 0.8);
 }
 .sunscreen__uv-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
 .sunscreen__uv-value {
-  font-size: 2rem;
+  font-size: 2.25rem;
   font-weight: 800;
-  color: var(--uv-value, #D54E4E);
   letter-spacing: -0.02em;
+  line-height: 1;
+  transition: color 0.4s ease;
 }
 .sunscreen__risk-badge {
   display: inline-block;
-  padding: 0.25rem 0.6rem;
+  padding: 0.25rem 0.7rem;
   border-radius: 999px;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
+  letter-spacing: 0.03em;
   color: #fff;
   background: var(--uv-danger, #D44A4A);
 }
@@ -166,9 +240,10 @@ const dosageItems = [
 .sunscreen__no-data {
   margin: 0;
   font-size: 0.9375rem;
-  color: var(--uv-text-muted, #8A8A8A);
+  color: rgba(255, 255, 255, 0.55);
 }
 
+/* SPF recommendation */
 .sunscreen__spf-block {
   margin: 0;
 }
@@ -176,24 +251,25 @@ const dosageItems = [
   margin: 0 0 0.5rem;
   font-size: 1.5rem;
   font-weight: 800;
-  color: var(--uv-primary, #D8613C);
+  color: #ffb088;
   letter-spacing: -0.02em;
 }
 .sunscreen__spf-explanation {
   margin: 0;
   font-size: 0.9375rem;
-  color: var(--uv-text-muted, #8A8A8A);
+  color: rgba(255, 255, 255, 0.6);
   line-height: 1.5;
 }
 
+/* Dosage */
 .sunscreen__dosage-intro {
   margin: 0 0 1rem;
   font-size: 0.9375rem;
-  color: var(--uv-text, #4A4A4A);
+  color: rgba(255, 255, 255, 0.8);
   line-height: 1.5;
 }
 .sunscreen__dosage-intro strong {
-  color: var(--uv-primary, #D8613C);
+  color: #ffb088;
 }
 .sunscreen__dosage-list {
   margin: 0;
@@ -204,28 +280,39 @@ const dosageItems = [
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid var(--uv-grid, #E6E1DA);
+  padding: 0.55rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 0.9375rem;
 }
 .sunscreen__dosage-item:last-child {
   border-bottom: none;
 }
 .sunscreen__dosage-area {
-  color: var(--uv-text, #4A4A4A);
+  color: rgba(255, 255, 255, 0.8);
 }
 .sunscreen__dosage-amount {
   font-weight: 600;
-  color: var(--uv-primary, #D8613C);
+  color: #ffb088;
 }
 
+/* Reapplication */
 .sunscreen__reapply-text {
   margin: 0;
   font-size: 0.9375rem;
-  color: var(--uv-text, #4A4A4A);
+  color: rgba(255, 255, 255, 0.8);
   line-height: 1.5;
 }
 .sunscreen__reapply-text strong {
-  color: var(--uv-primary, #D8613C);
+  color: #ffb088;
+}
+
+/* ── Mobile ── */
+@media (max-width: 600px) {
+  .sunscreen__body {
+    padding: 1.75rem 1.25rem 1.5rem;
+    gap: 1rem;
+  }
+  .sunscreen__title { font-size: 1.25rem; }
+  .sunscreen__card { padding: 1.25rem 1.25rem; }
 }
 </style>
