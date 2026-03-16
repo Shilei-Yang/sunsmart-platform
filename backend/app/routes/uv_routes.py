@@ -36,6 +36,7 @@ LOCATION_CACHE = {}
 LOCATION_CACHE_TTL_SECONDS = 1800  # 30 minutes
 FORECAST_TIMEOUT_SECONDS = 8
 ARCHIVE_TIMEOUT_SECONDS = 4
+STALE_CACHE_MAX_AGE_SECONDS = 3600
 
 
 def _make_cache_key(lat: float, lon: float, places: int = 2, include_history=None):
@@ -69,6 +70,22 @@ def _set_cached_uv(lat: float, lon: float, payload: dict, include_history: bool)
     UV_CACHE[key] = {"timestamp": time.time(), "payload": payload}
 
 
+def _get_stale_cached_uv(lat: float, lon: float, include_history: bool, max_age_seconds: int):
+    """Return cached UV payload even if expired, up to max_age_seconds."""
+    key = _make_cache_key(lat, lon, include_history=include_history)
+    entry = UV_CACHE.get(key)
+    if not entry:
+        return None
+    ts = entry.get("timestamp")
+    payload = entry.get("payload")
+    if ts is None or payload is None:
+        return None
+    age = time.time() - ts
+    if age <= max_age_seconds:
+        return payload
+    return None
+
+
 def _get_cached_location(lat: float, lon: float):
     """Return cached nearest-location tuple (name, state) if fresh."""
     key = _make_cache_key(lat, lon)
@@ -100,6 +117,8 @@ def _get_nearest_location_name(lat: float, lon: float):
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
+                # Prevent slow DB lookup from delaying UV API response too long.
+                cur.execute("SET LOCAL statement_timeout = %s;", (1500,))
                 cur.execute(
                     """
                     SELECT suburb, state
@@ -286,7 +305,9 @@ def get_uv():
     url = OPEN_METEO_URL.format(lat=lat_f, lon=lon_f)
 
     try:
-        response = requests.get(url, timeout=FORECAST_TIMEOUT_SECONDS)
+        # Separate connect/read timeout to fail fast on network stalls while
+        # still allowing moderate response time from Open-Meteo.
+        response = requests.get(url, timeout=(2.5, FORECAST_TIMEOUT_SECONDS))
 
         # If Open-Meteo rate limits us (HTTP 429), try to fall back to cached data.
         if response.status_code == 429:
@@ -300,6 +321,14 @@ def get_uv():
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
+        stale_payload = _get_stale_cached_uv(
+            lat_f,
+            lon_f,
+            include_history=include_history,
+            max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
+        )
+        if stale_payload is not None:
+            return jsonify(stale_payload), 200
         return jsonify({"error": f"Unable to fetch UV data from Open-Meteo: {str(e)}"}), 500
     except (ValueError, KeyError):
         return jsonify({"error": "Invalid response from UV service"}), 500

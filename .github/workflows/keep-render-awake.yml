@@ -1,0 +1,17 @@
+name: Keep Render Awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Render health endpoint
+        run: |
+          set -e
+          curl -fsS "https://sunsmart-platform-backend.onrender.com/api/health" > /dev/null
+          echo "Render health endpoint is reachable."

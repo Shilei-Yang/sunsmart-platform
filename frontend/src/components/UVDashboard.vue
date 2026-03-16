@@ -19,29 +19,62 @@ const searchDebounce = ref(null)
 const selectedLocation = ref(null)
 const searchFeedback = ref(null)
 const searchFeedbackType = ref('info')
+const isBackToCurrentLoading = ref(false)
+
+let currentUvController = null
+let currentUvRequestId = 0
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 async function fetchUvForLocation(latitude, longitude) {
   const url = `${apiBase}/api/uv?lat=${latitude}&lon=${longitude}&include_history=0`
   uvError.value = null
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 12000)
-  try {
-    const res = await fetch(url, { signal: controller.signal })
-    if (!res.ok) {
+  currentUvRequestId += 1
+  const requestId = currentUvRequestId
+
+  if (currentUvController) currentUvController.abort()
+  const maxAttempts = 3
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController()
+    currentUvController = controller
+    const timer = setTimeout(() => controller.abort(), 15000)
+    try {
+      const res = await fetch(url, { signal: controller.signal })
+      if (requestId !== currentUvRequestId) return
+
+      if (!res.ok) {
+        const retryable = [429, 502, 503, 504].includes(res.status)
+        if (retryable && attempt < maxAttempts) {
+          await sleep(attempt * 1000)
+          continue
+        }
+        uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
+        uvStatus.value = 'error'
+        uvData.value = null
+        return
+      }
+
+      const json = await res.json()
+      if (requestId !== currentUvRequestId) return
+      uvData.value = json
+      uvStatus.value = 'success'
+      return
+    } catch {
+      if (requestId !== currentUvRequestId) return
+      if (attempt < maxAttempts) {
+        await sleep(attempt * 1000)
+        continue
+      }
       uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
       uvStatus.value = 'error'
       uvData.value = null
       return
+    } finally {
+      clearTimeout(timer)
     }
-    const json = await res.json()
-    uvData.value = json
-    uvStatus.value = 'success'
-  } catch (e) {
-    uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
-    uvStatus.value = 'error'
-    uvData.value = null
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -62,15 +95,18 @@ function startUvFlow({ resetSelected = false } = {}) {
     (position) => {
       const { latitude, longitude } = position.coords
       fetchUvForLocation(latitude, longitude)
+      isBackToCurrentLoading.value = false
     },
     (err) => {
       if (err?.code === 1) {
         uvStatus.value = 'denied'
         uvError.value = 'Location access was denied. Please enable location permission or search for a city manually.'
+        isBackToCurrentLoading.value = false
         return
       }
       uvStatus.value = 'error'
       uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
+      isBackToCurrentLoading.value = false
     },
     { enableHighAccuracy: false, timeout: 8000, maximumAge: 900000 }
   )
@@ -144,6 +180,7 @@ function selectLocation(loc) {
 function backToCurrentLocation() {
   showDropdown.value = false
   searchResults.value = []
+  isBackToCurrentLoading.value = true
   startUvFlow({ resetSelected: true })
 }
 
@@ -301,8 +338,8 @@ onMounted(startUvFlow)
               </li>
             </ul>
           </div>
-          <button type="button" class="hero-dashboard__back-btn" @click="backToCurrentLocation">
-            Back to Current
+          <button type="button" class="hero-dashboard__back-btn" :disabled="isBackToCurrentLoading || uvStatus === 'loading'" @click="backToCurrentLocation">
+            {{ isBackToCurrentLoading || uvStatus === 'loading' ? 'Loading…' : 'Back to Current' }}
           </button>
         </div>
         <p
