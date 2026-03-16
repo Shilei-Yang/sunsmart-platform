@@ -118,7 +118,8 @@ const fitzpatrick = [
 const selected = computed(() => fitzpatrick.find(t => t.id === selectedId.value) ?? null)
 
 const currentUV = computed(() => {
-  const val = Number(uvData.value?.current_uv)
+  const raw = uvData.value?.current_uv ?? uvData.value?.uv_index
+  const val = Number(raw)
   return Number.isFinite(val) && val > 0 ? val : null
 })
 
@@ -132,11 +133,16 @@ function burnTime(type) {
   return Math.round(type.baseBurn * 6 / currentUV.value)
 }
 
+const hasUvData = computed(() => uvData.value != null)
+
 function burnTimeDisplay(type) {
   const mins = burnTime(type)
-  if (!mins) return 'Enable location for estimate'
-  if (mins >= 120) return `~${Math.round(mins / 60)} hrs`
-  return `~${mins} min`
+  if (mins) {
+    if (mins >= 120) return `~${Math.round(mins / 60)} hrs`
+    return `~${mins} min`
+  }
+  if (hasUvData.value) return 'No UV risk right now'
+  return 'Enable location for estimate'
 }
 
 function selectType(id) {
