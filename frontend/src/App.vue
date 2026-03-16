@@ -12,6 +12,8 @@ import CancerVisualisation from '@/components/CancerVisualisation.vue'
 import MythFactCarousel from '@/components/MythFactCarousel.vue'
 import PersonalisedExperience from '@/components/PersonalisedExperience.vue'
 import SunscreenManagement from '@/components/SunscreenManagement.vue'
+import SunSmartClothing from '@/components/SunSmartClothing.vue'
+import Resources from '@/components/Resources.vue'
 import whyPhoto from '@/assets/pexels-jacub-gomez-447561-1168750.jpg'
 
 const infoTab = ref('uv-impacts')
@@ -87,6 +89,12 @@ const protectionTips = [
             </section>
             <section v-else-if="infoTab === 'sunscreen'">
               <SunscreenManagement />
+            </section>
+            <section v-else-if="infoTab === 'clothing'">
+              <SunSmartClothing />
+            </section>
+            <section v-else-if="infoTab === 'resources'">
+              <Resources />
             </section>
             <section v-else class="homepage__coming-wrap">
               <p class="homepage__coming">Content for this section is coming soon.</p>
