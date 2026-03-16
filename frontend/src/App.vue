@@ -44,11 +44,13 @@ const protectionTips = [
           </p>
         </div>
         <nav class="homepage__nav" aria-label="Information sections">
-          <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'uv-impacts' }" @click="infoTab = 'uv-impacts'">Impact</button>
-          <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'personalised' }" @click="infoTab = 'personalised'">Personalised Experience</button>
-          <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'sunscreen' }" @click="infoTab = 'sunscreen'">Sunscreen Management</button>
-          <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'clothing' }" @click="infoTab = 'clothing'">Sun-smart Clothing</button>
-          <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'resources' }" @click="infoTab = 'resources'">Resources</button>
+          <div class="homepage__nav-track">
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'uv-impacts' }" @click="infoTab = 'uv-impacts'">Impact</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'personalised' }" @click="infoTab = 'personalised'">Personalised Experience</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'sunscreen' }" @click="infoTab = 'sunscreen'">Sunscreen Management</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'clothing' }" @click="infoTab = 'clothing'">Sun-smart Clothing</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'resources' }" @click="infoTab = 'resources'">Resources</button>
+          </div>
         </nav>
       </div>
     </header>
@@ -122,6 +124,7 @@ const protectionTips = [
   --uv-card: #FFFFFF;
   background: var(--uv-bg);
   color: var(--uv-text);
+  overflow-x: hidden;
 }
 
 /* Top navigation */
@@ -174,6 +177,11 @@ const protectionTips = [
 }
 .homepage__nav {
   display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.homepage__nav-track {
+  display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
   align-items: center;
@@ -182,6 +190,8 @@ const protectionTips = [
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   font-weight: 500;
+  white-space: nowrap;
+  flex: 0 0 auto;
   color: var(--uv-text-muted);
   background: transparent;
   border: none;
@@ -206,7 +216,7 @@ const protectionTips = [
   border-radius: 1px;
 }
 
-.homepage__main { padding: 7.5rem 1.5rem 3rem; }
+.homepage__main { padding: 9rem 1.5rem 3rem; }
 .homepage__container { max-width: 1280px; margin: 0 auto; }
 .homepage__hero { margin-bottom: 1.25rem; }
 
@@ -312,11 +322,61 @@ const protectionTips = [
 
 @media (min-width: 900px) {
   .homepage__main { padding: 8rem 2rem 3.5rem; }
+  .homepage__nav {
+    overflow-x: visible;
+  }
+  .homepage__nav-track {
+    flex-wrap: wrap;
+  }
   .homepage__columns {
     flex-direction: row;
     align-items: flex-start;
     gap: 2.5rem;
   }
   .homepage__col--left { flex: 1; min-width: 0; }
+}
+
+@media (max-width: 899px) {
+  .homepage__main {
+    padding: 8.75rem 0.85rem 2rem;
+  }
+  .homepage__header {
+    padding: 0.75rem 1rem;
+  }
+  .homepage__header-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+  .homepage__brand-text {
+    font-size: 1.6rem;
+  }
+  .homepage__brand-tagline {
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+  }
+  .homepage__nav {
+    width: 100%;
+    overflow: visible;
+    padding: 0 0 0.1rem;
+  }
+  .homepage__nav-track {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 0.4rem;
+    padding-left: 0;
+    padding-right: 0.65rem;
+  }
+  .homepage__nav-tab {
+    flex: 0 0 calc((100% - 0.8rem) / 3);
+    max-width: calc((100% - 0.8rem) / 3);
+    min-width: 0;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.25;
+    padding: 0.45rem 0.4rem;
+    font-size: 0.8rem;
+  }
 }
 </style>

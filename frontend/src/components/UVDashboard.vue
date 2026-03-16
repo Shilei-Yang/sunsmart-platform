@@ -412,6 +412,12 @@ onMounted(startUvFlow)
 </template>
 
 <style scoped>
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 /* ─── Main container ─── */
 .hero-dashboard {
   position: relative;
@@ -440,6 +446,7 @@ onMounted(startUvFlow)
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  min-width: 0;
 }
 
 /* Search */
@@ -447,6 +454,8 @@ onMounted(startUvFlow)
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
 }
 .hero-dashboard__search-wrap {
   position: relative;
@@ -459,6 +468,8 @@ onMounted(startUvFlow)
   padding: 0.55rem 0.9rem;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   transition: border-color 0.2s, box-shadow 0.2s;
+  min-width: 0;
+  width: 100%;
 }
 .hero-dashboard__search-wrap:focus-within {
   border-color: var(--uv-primary, #D8613C);
@@ -489,6 +500,7 @@ onMounted(startUvFlow)
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 .hero-dashboard__back-btn:hover {
   background: #fff;
@@ -563,6 +575,8 @@ onMounted(startUvFlow)
 
 /* ─── UV cards ─── */
 .hero-dashboard__uv-card {
+  width: 100%;
+  max-width: 100%;
   border-radius: 16px;
   padding: 0.85rem 1.15rem;
   margin-top: 0.35rem;
@@ -656,6 +670,8 @@ onMounted(startUvFlow)
   min-width: 0; display: flex; flex-direction: column;
 }
 .hero-dashboard__chart-card {
+  width: 100%;
+  max-width: 100%;
   flex: 1;
   background: #fff;
   border-radius: 20px;
@@ -681,6 +697,43 @@ onMounted(startUvFlow)
   .hero-dashboard__uv-value { font-size: 3.25rem; }
   .hero-dashboard__location-heading { font-size: 1.75rem; }
 }
+
+@media (max-width: 640px) {
+  .hero-dashboard {
+    padding: 1rem 0.85rem;
+    border-radius: 16px;
+  }
+  .hero-dashboard__grid {
+    gap: 1rem;
+  }
+  .hero-dashboard__search-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+  .hero-dashboard__back-btn {
+    width: 100%;
+    text-align: center;
+  }
+  .hero-dashboard__location-heading {
+    font-size: 1.25rem;
+    line-height: 1.25;
+  }
+  .hero-dashboard__uv-value {
+    font-size: 2.35rem;
+  }
+  .hero-dashboard__uv-value--current {
+    font-size: 2.1rem;
+  }
+  .hero-dashboard__uv-card {
+    padding: 0.8rem 0.9rem;
+  }
+  .hero-dashboard__chart-card {
+    padding: 0.9rem 0.8rem 0.75rem;
+    border-radius: 14px;
+  }
+}
+
 @media (min-width: 900px) {
   .hero-dashboard { padding: 2.5rem 3rem; }
   .hero-dashboard__grid {

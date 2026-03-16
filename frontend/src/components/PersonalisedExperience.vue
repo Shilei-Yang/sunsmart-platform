@@ -522,6 +522,7 @@ function selectType(id) {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 0.25rem;
+  scrollbar-width: thin;
 }
 .skin__card {
   min-width: 130px;
@@ -535,6 +536,7 @@ function selectType(id) {
   border-radius: 14px;
   border: 2px solid transparent;
   transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+  scroll-snap-align: start;
 }
 .skin__card--selected {
   border-color: var(--uv-primary, #D8613C);
@@ -613,10 +615,18 @@ function selectType(id) {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Mobile: horizontal scroll for comparison grid */
-@media (max-width: 860px) {
+/* Tablet & mobile: keep horizontal row with swipe */
+@media (max-width: 1024px) {
   .skin__grid {
-    grid-template-columns: repeat(6, minmax(130px, 1fr));
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 160px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.2rem 0.15rem 0.35rem;
+    gap: 0.65rem;
   }
   .skin__risk-badge {
     margin-left: 0;
@@ -624,7 +634,17 @@ function selectType(id) {
 }
 @media (max-width: 540px) {
   .skin__picker {
-    gap: 0.6rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-items: center;
+    gap: 0.65rem 0.45rem;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+  .skin__swatch {
+    width: 100%;
+    max-width: 92px;
+    padding: 0.2rem 0;
   }
   .skin__swatch-circle {
     width: 44px;

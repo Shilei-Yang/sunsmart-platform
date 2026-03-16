@@ -208,10 +208,18 @@ function barColorForUv(v) {
 </template>
 
 <style scoped>
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 .max-uv-graph {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
 }
 .max-uv-graph__panel {
   min-height: 200px;
@@ -359,6 +367,7 @@ function barColorForUv(v) {
   border-radius: 18px;
   box-shadow: 0 6px 18px rgba(31, 95, 153, 0.08);
   padding: 1rem 1rem 0.75rem;
+  overflow: hidden;
 }
 .forecast-chart__grid {
   position: absolute;
@@ -404,6 +413,8 @@ function barColorForUv(v) {
   align-items: end;
   min-height: 240px;
   padding-top: 0.5rem;
+  width: 100%;
+  min-width: 0;
 }
 .forecast-chart__bar-col {
   display: flex;
@@ -459,6 +470,7 @@ function barColorForUv(v) {
 .forecast-chart__uv-legend-labels span {
   text-align: center;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 /* UVIBE dashboard style: transparent plot, muted grid, seamless integration */
@@ -507,11 +519,30 @@ function barColorForUv(v) {
 }
 
 @media (max-width: 700px) {
+  .forecast-chart__plot {
+    padding: 0.8rem 0.7rem 0.65rem;
+    border-radius: 14px;
+  }
   .forecast-chart__bars {
-    gap: 0.5rem;
+    gap: 0.35rem;
+    min-height: 190px;
+  }
+  .forecast-chart__bar-wrap {
+    height: 130px;
   }
   .forecast-chart__bar {
-    max-width: 34px;
+    max-width: 26px;
+    border-radius: 8px 8px 6px 6px;
+  }
+  .forecast-chart__x-label {
+    font-size: 0.68rem;
+  }
+  .forecast-chart__value {
+    font-size: 0.62rem;
+  }
+  .forecast-chart__uv-legend-labels {
+    font-size: 0.56rem;
+    gap: 0.2rem;
   }
 }
 
