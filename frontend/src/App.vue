@@ -17,6 +17,7 @@ import whyPhoto from '@/assets/pexels-jacub-gomez-447561-1168750.jpg'
 const infoTab = ref('uv-impacts')
 const uvData = ref(null)
 provide('uvData', uvData)
+provide('infoTab', infoTab)
 
 const protectionTips = [
   { text: 'Seek shade' },

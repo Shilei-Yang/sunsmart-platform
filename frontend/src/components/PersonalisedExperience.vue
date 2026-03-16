@@ -1,248 +1,627 @@
-<!--
-  Personalised Experience — Epic 3 UI placeholder.
-  Customise UV alerts: skin type, activity goals, alert frequency, preferences, method.
-  No backend logic yet.
--->
 <script setup>
-const skinTypes = ['Type I', 'Type II', 'Type III', 'Type IV', 'Type V', 'Type VI']
+import { ref, computed, inject } from 'vue'
 
-const activityGoals = [
-  'Short Activity: Up to 3 hour',
-  'Moderate Activity: 4 to 8 hours',
-  'Extended Activity: More than 9 hours',
+const uvData = inject('uvData', ref(null))
+const selectedId = ref(null)
+
+const fitzpatrick = [
+  {
+    id: 1,
+    label: 'Type I',
+    name: 'Very Fair',
+    hex: '#FDDCB5',
+    description: 'Light blue or green eyes, red or blond hair, freckles common',
+    reaction: 'Always burns, never tans',
+    baseBurn: 10,
+    riskLevel: 'Very High',
+    riskColor: '#D44A4A',
+    spf: '50+',
+    tips: [
+      'Reapply SPF 50+ every 60–80 minutes when outdoors',
+      'Wear UPF-rated clothing and a wide-brim hat',
+      'Avoid direct sun between 10 am and 4 pm',
+    ],
+    melanomaNotes: 'Highest melanoma risk. 1 in 50 Australians with very fair skin will be diagnosed.',
+  },
+  {
+    id: 2,
+    label: 'Type II',
+    name: 'Fair',
+    hex: '#F5C8A0',
+    description: 'Blue or hazel eyes, blond or light brown hair',
+    reaction: 'Burns easily, tans minimally',
+    baseBurn: 15,
+    riskLevel: 'High',
+    riskColor: '#E07B3A',
+    spf: '50+',
+    tips: [
+      'Use SPF 50+ and reapply after swimming or sweating',
+      'Sunglasses with UV400 protection are essential',
+      'Seek shade during peak UV hours',
+    ],
+    melanomaNotes: 'High melanoma risk. Fair skin and freckling increase vulnerability significantly.',
+  },
+  {
+    id: 3,
+    label: 'Type III',
+    name: 'Medium',
+    hex: '#D4A57B',
+    description: 'Hazel or brown eyes, brown hair',
+    reaction: 'Sometimes burns, tans gradually',
+    baseBurn: 20,
+    riskLevel: 'Moderate',
+    riskColor: '#D4A017',
+    spf: '30+',
+    tips: [
+      'Apply SPF 30+ generously, even on cloudy days',
+      'Monitor moles and freckles for changes regularly',
+      'UV damage accumulates even when you tan',
+    ],
+    melanomaNotes: 'Moderate risk, but UV damage is cumulative. A tan does not equal protection.',
+  },
+  {
+    id: 4,
+    label: 'Type IV',
+    name: 'Olive',
+    hex: '#A67C52',
+    description: 'Brown eyes, dark brown hair',
+    reaction: 'Rarely burns, tans easily',
+    baseBurn: 30,
+    riskLevel: 'Moderate',
+    riskColor: '#B8960C',
+    spf: '30',
+    tips: [
+      'SPF 30 is your minimum, even if you rarely burn',
+      'Check for skin changes in less-exposed areas too',
+      'Tanning does not mean you are protected from DNA damage',
+    ],
+    melanomaNotes: 'Lower incidence, but melanoma can still occur. Stay vigilant with self-checks.',
+  },
+  {
+    id: 5,
+    label: 'Type V',
+    name: 'Brown',
+    hex: '#7B5438',
+    description: 'Dark brown eyes and hair',
+    reaction: 'Very rarely burns, tans profusely',
+    baseBurn: 40,
+    riskLevel: 'Lower',
+    riskColor: '#3A9E5C',
+    spf: '15–30',
+    tips: [
+      'Sunscreen is still important: use SPF 15–30 daily',
+      'Melanoma in darker skin is often found late, on palms, soles, or nails',
+      'Regular skin checks matter for every skin tone',
+    ],
+    melanomaNotes: 'Melanoma is rarer but often diagnosed at a later, more dangerous stage.',
+  },
+  {
+    id: 6,
+    label: 'Type VI',
+    name: 'Very Dark',
+    hex: '#4A3228',
+    description: 'Dark brown or black eyes and hair',
+    reaction: 'Never burns',
+    baseBurn: 60,
+    riskLevel: 'Lower',
+    riskColor: '#3A9E5C',
+    spf: '15–30',
+    tips: [
+      'SPF 15–30 protects against photoaging and long-term UV damage',
+      'Watch for unusual patches on palms, soles, and under nails',
+      'Late diagnosis is the biggest risk — stay aware, stay checked',
+    ],
+    melanomaNotes: 'Lowest incidence, but acral melanoma (palms, soles, nails) is a real concern.',
+  },
 ]
 
-const alertFrequencyOptions = [
-  'Immediate Alerts',
-  'Hourly Updates',
-  'Daily Summaries',
-]
+const selected = computed(() => fitzpatrick.find(t => t.id === selectedId.value) ?? null)
 
-const alertPreferencesOptions = [
-  'General UV Alerts',
-  'Sunscreen Application and Dosage Reminders',
-  'Shade Seeking Alerts',
-  'Sun-smart Clothing',
-]
+const currentUV = computed(() => {
+  const val = Number(uvData.value?.current_uv)
+  return Number.isFinite(val) && val > 0 ? val : null
+})
 
-const alertMethodOptions = [
-  'SMS Notifications',
-  'Email Notifications',
-]
+const uvLabel = computed(() => {
+  if (!currentUV.value) return null
+  return `UV ${currentUV.value.toFixed(1)}`
+})
+
+function burnTime(type) {
+  if (!currentUV.value) return null
+  return Math.round(type.baseBurn * 6 / currentUV.value)
+}
+
+function burnTimeDisplay(type) {
+  const mins = burnTime(type)
+  if (!mins) return 'Enable location for estimate'
+  if (mins >= 120) return `~${Math.round(mins / 60)} hrs`
+  return `~${mins} min`
+}
+
+function selectType(id) {
+  selectedId.value = selectedId.value === id ? null : id
+}
 </script>
 
 <template>
-  <section class="personalised">
-    <!-- Single large white card -->
-    <div class="personalised__card uv-card">
-      <h2 class="personalised__title">Customise Your UV Alerts</h2>
+  <section class="skin">
+    <!-- Intro -->
+    <div class="skin__intro uv-card">
+      <span class="skin__eyebrow">Skin Tone Awareness</span>
+      <h2 class="skin__headline">
+        How does <span class="skin__accent">your skin</span> respond to UV?
+      </h2>
+      <p class="skin__subtext">
+        Not all skin reacts the same way to ultraviolet radiation.
+        Select the skin tone closest to yours and discover your personalised UV risk profile.
+      </p>
 
-      <!-- 1. Select Your Skin Type -->
-      <div class="personalised__section">
-        <h3 class="personalised__section-title">Select Your Skin Type</h3>
-        <p class="personalised__section-desc">Choose your skin type from the following options</p>
-        <div class="personalised__pills">
-          <span
-            v-for="type in skinTypes"
-            :key="type"
-            class="personalised__pill"
-          >
-            {{ type }}
-          </span>
-        </div>
-      </div>
-
-      <!-- 2. Set Activity Goals -->
-      <div class="personalised__section">
-        <h3 class="personalised__section-title">Set Activity Goals</h3>
-        <p class="personalised__section-desc">Specify your outdoor activity duration</p>
-        <div class="personalised__pills">
-          <span
-            v-for="goal in activityGoals"
-            :key="goal"
-            class="personalised__pill"
-          >
-            {{ goal }}
-          </span>
-        </div>
-      </div>
-
-      <!-- 3. Alert Frequency -->
-      <div class="personalised__section">
-        <h3 class="personalised__section-title">Alert Frequency</h3>
-        <p class="personalised__section-desc">Select how often you want to receive alerts</p>
-        <div class="personalised__pills">
-          <span
-            v-for="freq in alertFrequencyOptions"
-            :key="freq"
-            class="personalised__pill"
-          >
-            {{ freq }}
-          </span>
-        </div>
-      </div>
-
-      <!-- 4. Alert Preferences -->
-      <div class="personalised__section">
-        <h3 class="personalised__section-title">Alert Preferences</h3>
-        <p class="personalised__section-desc">Specify the types of alerts you want to receive</p>
-        <div class="personalised__pills">
-          <span
-            v-for="pref in alertPreferencesOptions"
-            :key="pref"
-            class="personalised__pill"
-          >
-            {{ pref }}
-          </span>
-        </div>
-      </div>
-
-      <!-- 5. Alert Method -->
-      <div class="personalised__section">
-        <h3 class="personalised__section-title">Alert Method</h3>
-        <p class="personalised__section-desc">Specify how you want to receive the alerts</p>
-        <div class="personalised__pills">
-          <span
-            v-for="method in alertMethodOptions"
-            :key="method"
-            class="personalised__pill"
-          >
-            {{ method }}
-          </span>
-        </div>
-      </div>
-
-      <!-- 6. Input Field -->
-      <div class="personalised__section">
-        <div class="personalised__input-wrap">
-          <span class="personalised__input-icon" aria-hidden="true">✎</span>
-          <input
-            type="text"
-            class="personalised__input"
-            placeholder="Enter Your Details Here"
-            aria-label="Enter your details"
-          />
-        </div>
-      </div>
-
-      <!-- 7. Buttons (aligned right) -->
-      <div class="personalised__actions">
-        <button type="button" class="personalised__btn personalised__btn--outline">
-          Clear
-        </button>
-        <button type="button" class="personalised__btn personalised__btn--primary">
-          Send Alerts
+      <!-- Swatch picker -->
+      <div class="skin__picker">
+        <button
+          v-for="type in fitzpatrick"
+          :key="type.id"
+          type="button"
+          class="skin__swatch"
+          :class="{ 'skin__swatch--active': selectedId === type.id }"
+          :style="{ '--swatch': type.hex }"
+          :aria-label="`Select ${type.label}: ${type.name}`"
+          :aria-pressed="selectedId === type.id"
+          @click="selectType(type.id)"
+        >
+          <span class="skin__swatch-circle" />
+          <span class="skin__swatch-label">{{ type.label }}</span>
         </button>
       </div>
+    </div>
+
+    <!-- Personalised risk card (visible when a type is selected) -->
+    <transition name="skin-fade">
+      <div v-if="selected" class="skin__risk uv-card" :style="{ '--risk': selected.riskColor }">
+        <div class="skin__risk-header">
+          <div class="skin__risk-swatch" :style="{ background: selected.hex }" />
+          <div>
+            <h3 class="skin__risk-title">{{ selected.label }}: {{ selected.name }}</h3>
+            <p class="skin__risk-desc">{{ selected.description }}</p>
+          </div>
+          <span class="skin__risk-badge" :style="{ background: selected.riskColor }">
+            {{ selected.riskLevel }} Risk
+          </span>
+        </div>
+
+        <p class="skin__risk-reaction">
+          <strong>Sun reaction:</strong> {{ selected.reaction }}
+        </p>
+
+        <div class="skin__risk-stats">
+          <div class="skin__stat">
+            <span class="skin__stat-value">{{ burnTimeDisplay(selected) }}</span>
+            <span class="skin__stat-label">
+              Estimated burn time
+              <template v-if="uvLabel">(at {{ uvLabel }})</template>
+            </span>
+          </div>
+          <div class="skin__stat">
+            <span class="skin__stat-value">SPF {{ selected.spf }}</span>
+            <span class="skin__stat-label">Recommended sunscreen</span>
+          </div>
+        </div>
+
+        <div class="skin__tips">
+          <h4 class="skin__tips-title">Your protection checklist</h4>
+          <ul class="skin__tips-list">
+            <li v-for="(tip, i) in selected.tips" :key="i" class="skin__tips-item">
+              {{ tip }}
+            </li>
+          </ul>
+        </div>
+
+        <div class="skin__melanoma-note">
+          <span class="skin__melanoma-icon" aria-hidden="true">⚠</span>
+          <p>{{ selected.melanomaNotes }}</p>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Educational comparison grid -->
+    <div class="skin__compare uv-card">
+      <span class="skin__eyebrow">How All Skin Types Compare</span>
+      <h3 class="skin__compare-title">UV affects everyone differently</h3>
+      <p class="skin__subtext">
+        Compare all six Fitzpatrick skin types to see how burn time and risk vary.
+        <template v-if="selected">Your type is highlighted.</template>
+      </p>
+
+      <div class="skin__grid">
+        <div
+          v-for="type in fitzpatrick"
+          :key="type.id"
+          class="skin__card"
+          :class="{ 'skin__card--selected': selectedId === type.id }"
+        >
+          <div class="skin__card-swatch" :style="{ background: type.hex }" />
+          <span class="skin__card-label">{{ type.label }}</span>
+          <span class="skin__card-name">{{ type.name }}</span>
+          <span class="skin__card-burn">{{ burnTimeDisplay(type) }}</span>
+          <span
+            class="skin__card-risk"
+            :style="{ color: type.riskColor, borderColor: type.riskColor }"
+          >
+            {{ type.riskLevel }}
+          </span>
+          <span class="skin__card-reaction">{{ type.reaction }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Awareness callout -->
+    <div class="skin__callout">
+      <p class="skin__callout-text">
+        <strong>All skin types can develop skin cancer.</strong>
+        Darker skin tones are often diagnosed later, making early awareness crucial for everyone.
+      </p>
     </div>
   </section>
 </template>
 
 <style scoped>
-.personalised {
-  margin-bottom: 0;
+.skin {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-.personalised__title {
-  margin: 0 0 1.75rem;
-  font-size: 1.375rem;
+/* Intro card */
+.skin__intro {
+  text-align: center;
+  padding: 2rem 1.5rem 1.75rem;
+}
+.skin__eyebrow {
+  display: inline-block;
+  font-size: 0.75rem;
   font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--uv-primary, #D8613C);
+  margin-bottom: 0.5rem;
+}
+.skin__headline {
+  margin: 0 0 0.6rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--uv-text, #4A4A4A);
   letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.skin__accent {
+  color: var(--uv-primary, #D8613C);
+}
+.skin__subtext {
+  margin: 0 0 1.25rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--uv-text-muted, #8A8A8A);
+  max-width: 52ch;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-.personalised__section {
-  margin-bottom: 1.75rem;
+/* Swatch picker */
+.skin__picker {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
-.personalised__section:last-of-type {
-  margin-bottom: 0;
+.skin__swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  transition: transform 0.2s ease;
+}
+.skin__swatch:hover {
+  transform: translateY(-3px);
+}
+.skin__swatch-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--swatch);
+  border: 3px solid transparent;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+.skin__swatch:hover .skin__swatch-circle {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.skin__swatch--active .skin__swatch-circle {
+  border-color: var(--uv-primary, #D8613C);
+  box-shadow: 0 0 0 3px rgba(216, 97, 60, 0.25), 0 4px 14px rgba(0, 0, 0, 0.15);
+  transform: scale(1.1);
+}
+.skin__swatch-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--uv-text-muted, #8A8A8A);
+  transition: color 0.2s;
+}
+.skin__swatch--active .skin__swatch-label {
+  color: var(--uv-primary, #D8613C);
 }
 
-.personalised__section-title {
-  margin: 0 0 0.35rem;
-  font-size: 1.0625rem;
+/* Risk card */
+.skin__risk {
+  padding: 1.75rem;
+  border-left: 4px solid var(--risk);
+  animation: skin-slideIn 0.35s ease;
+}
+.skin__risk-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.skin__risk-swatch {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.skin__risk-title {
+  margin: 0;
+  font-size: 1.125rem;
   font-weight: 700;
   color: var(--uv-text, #4A4A4A);
 }
-.personalised__section-desc {
-  margin: 0 0 0.85rem;
-  font-size: 0.9375rem;
+.skin__risk-desc {
+  margin: 0.15rem 0 0;
+  font-size: 0.8125rem;
   color: var(--uv-text-muted, #8A8A8A);
+}
+.skin__risk-badge {
+  margin-left: auto;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.skin__risk-reaction {
+  margin: 0 0 1.25rem;
+  font-size: 0.9375rem;
+  color: var(--uv-text, #4A4A4A);
   line-height: 1.5;
 }
 
-/* Pill buttons */
-.personalised__pills {
+/* Stats row */
+.skin__risk-stats {
   display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
   flex-wrap: wrap;
+}
+.skin__stat {
+  flex: 1;
+  min-width: 140px;
+  padding: 1rem;
+  background: var(--uv-bg, #F4F1EC);
+  border-radius: 12px;
+  text-align: center;
+}
+.skin__stat-value {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--uv-primary, #D8613C);
+  margin-bottom: 0.2rem;
+}
+.skin__stat-label {
+  font-size: 0.8125rem;
+  color: var(--uv-text-muted, #8A8A8A);
+  line-height: 1.4;
+}
+
+/* Tips */
+.skin__tips {
+  margin-bottom: 1.25rem;
+}
+.skin__tips-title {
+  margin: 0 0 0.6rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--uv-text, #4A4A4A);
+}
+.skin__tips-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
   gap: 0.5rem;
 }
-.personalised__pill {
-  display: inline-block;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--uv-text, #4A4A4A);
-  background: var(--uv-card, #fff);
-  border: 1px solid var(--uv-grid, #E6E1DA);
-  border-radius: 999px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-}
-
-/* Input with icon */
-.personalised__input-wrap {
+.skin__tips-item {
   position: relative;
-  display: flex;
-  align-items: center;
-}
-.personalised__input-icon {
-  position: absolute;
-  left: 1rem;
-  font-size: 1rem;
-  color: var(--uv-text-muted, #8A8A8A);
-  pointer-events: none;
-}
-.personalised__input {
-  width: 100%;
-  padding: 0.9rem 1.25rem 0.9rem 2.75rem;
-  font-size: 0.9375rem;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
   color: var(--uv-text, #4A4A4A);
-  background: var(--uv-card, #fff);
-  border: 1px solid var(--uv-grid, #E6E1DA);
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  line-height: 1.55;
 }
-.personalised__input::placeholder {
-  color: var(--uv-text-muted, #8A8A8A);
+.skin__tips-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--risk);
 }
 
-/* Buttons aligned right */
-.personalised__actions {
-  margin-top: 1.75rem;
-  padding-top: 0.25rem;
+/* Melanoma note */
+.skin__melanoma-note {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-.personalised__btn {
-  padding: 0.65rem 1.5rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  background: rgba(212, 74, 74, 0.06);
+  border: 1px solid rgba(212, 74, 74, 0.15);
   border-radius: 10px;
-  cursor: pointer;
-  transition: opacity 0.2s;
 }
-.personalised__btn:hover {
-  opacity: 0.9;
+.skin__melanoma-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1.5;
 }
-.personalised__btn--primary {
-  background: var(--uv-primary, #D8613C);
-  color: #fff;
-  border: none;
-}
-.personalised__btn--outline {
-  background: transparent;
+.skin__melanoma-note p {
+  margin: 0;
+  font-size: 0.8125rem;
   color: var(--uv-text, #4A4A4A);
-  border: 2px solid var(--uv-grid, #E6E1DA);
+  line-height: 1.55;
+}
+
+/* Comparison grid */
+.skin__compare {
+  padding: 1.75rem 1.5rem;
+}
+.skin__compare-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  color: var(--uv-text, #4A4A4A);
+}
+.skin__grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.75rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.25rem;
+}
+.skin__card {
+  min-width: 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+  padding: 1.25rem 0.75rem;
+  background: var(--uv-bg, #F4F1EC);
+  border-radius: 14px;
+  border: 2px solid transparent;
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+}
+.skin__card--selected {
+  border-color: var(--uv-primary, #D8613C);
+  box-shadow: 0 4px 18px rgba(216, 97, 60, 0.15);
+  transform: translateY(-4px);
+}
+.skin__card-swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.25rem;
+}
+.skin__card-label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--uv-text, #4A4A4A);
+}
+.skin__card-name {
+  font-size: 0.75rem;
+  color: var(--uv-text-muted, #8A8A8A);
+}
+.skin__card-burn {
+  font-size: 0.9375rem;
+  font-weight: 800;
+  color: var(--uv-primary, #D8613C);
+  margin: 0.25rem 0;
+}
+.skin__card-risk {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1.5px solid;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+.skin__card-reaction {
+  font-size: 0.6875rem;
+  color: var(--uv-text-muted, #8A8A8A);
+  line-height: 1.4;
+  margin-top: 0.2rem;
+}
+
+/* Awareness callout */
+.skin__callout {
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, #D8613C 0%, #c44e2c 100%);
+  border-radius: 14px;
+  text-align: center;
+}
+.skin__callout-text {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: #fff;
+  line-height: 1.6;
+}
+.skin__callout-text strong {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Transition */
+.skin-fade-enter-active,
+.skin-fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.skin-fade-enter-from,
+.skin-fade-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+@keyframes skin-slideIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Mobile: horizontal scroll for comparison grid */
+@media (max-width: 860px) {
+  .skin__grid {
+    grid-template-columns: repeat(6, minmax(130px, 1fr));
+  }
+  .skin__risk-badge {
+    margin-left: 0;
+  }
+}
+@media (max-width: 540px) {
+  .skin__picker {
+    gap: 0.6rem;
+  }
+  .skin__swatch-circle {
+    width: 44px;
+    height: 44px;
+  }
+  .skin__intro {
+    padding: 1.5rem 1rem;
+  }
+  .skin__risk {
+    padding: 1.25rem;
+  }
+  .skin__compare {
+    padding: 1.25rem 1rem;
+  }
 }
 </style>
