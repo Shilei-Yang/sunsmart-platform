@@ -17,6 +17,8 @@ const searchResults = ref([])
 const showDropdown = ref(false)
 const searchDebounce = ref(null)
 const selectedLocation = ref(null)
+const searchFeedback = ref(null)
+const searchFeedbackType = ref('info')
 
 async function fetchUvForLocation(latitude, longitude) {
   const url = `${apiBase}/api/uv?lat=${latitude}&lon=${longitude}&include_history=0`
@@ -26,8 +28,7 @@ async function fetchUvForLocation(latitude, longitude) {
   try {
     const res = await fetch(url, { signal: controller.signal })
     if (!res.ok) {
-      const body = await res.text()
-      uvError.value = body || `HTTP ${res.status}`
+      uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
       uvStatus.value = 'error'
       uvData.value = null
       return
@@ -36,7 +37,7 @@ async function fetchUvForLocation(latitude, longitude) {
     uvData.value = json
     uvStatus.value = 'success'
   } catch (e) {
-    uvError.value = e?.name === 'AbortError' ? 'Request timed out' : (e?.message || 'Network error')
+    uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
     uvStatus.value = 'error'
     uvData.value = null
   } finally {
@@ -44,11 +45,17 @@ async function fetchUvForLocation(latitude, longitude) {
   }
 }
 
-function startUvFlow() {
+function startUvFlow({ resetSelected = false } = {}) {
+  if (resetSelected) {
+    selectedLocation.value = null
+    searchQuery.value = ''
+  }
+  searchFeedback.value = null
   uvStatus.value = 'loading'
   uvData.value = null
   if (!navigator.geolocation) {
     uvStatus.value = 'denied'
+    uvError.value = 'Location access was denied. Please enable location permission or search for a city manually.'
     return
   }
   navigator.geolocation.getCurrentPosition(
@@ -56,7 +63,15 @@ function startUvFlow() {
       const { latitude, longitude } = position.coords
       fetchUvForLocation(latitude, longitude)
     },
-    () => { uvStatus.value = 'denied' },
+    (err) => {
+      if (err?.code === 1) {
+        uvStatus.value = 'denied'
+        uvError.value = 'Location access was denied. Please enable location permission or search for a city manually.'
+        return
+      }
+      uvStatus.value = 'error'
+      uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
+    },
     { enableHighAccuracy: false, timeout: 8000, maximumAge: 900000 }
   )
 }
@@ -64,10 +79,12 @@ function startUvFlow() {
 async function runLocationSearch(q) {
   const query = (q || '').trim()
   if (!query || query.length < 2) {
+    searchFeedback.value = null
     searchResults.value = []
     showDropdown.value = false
     return
   }
+  searchFeedback.value = null
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   try {
@@ -75,10 +92,28 @@ async function runLocationSearch(q) {
       `${apiBase}/api/location-search?q=${encodeURIComponent(query)}`,
       { signal: controller.signal }
     )
-    if (!res.ok) { searchResults.value = []; return }
+    if (!res.ok) {
+      searchResults.value = []
+      showDropdown.value = false
+      searchFeedbackType.value = 'error'
+      searchFeedback.value = 'Location search is temporarily unavailable. Please try again later.'
+      return
+    }
     const json = await res.json()
     searchResults.value = Array.isArray(json) ? json : []
-  } catch { searchResults.value = [] }
+    if (!searchResults.value.length) {
+      showDropdown.value = false
+      searchFeedbackType.value = 'info'
+      searchFeedback.value = 'Please enter a valid city, suburb, or address. This platform currently supports locations within Australia only.'
+      return
+    }
+    searchFeedback.value = null
+  } catch {
+    searchResults.value = []
+    showDropdown.value = false
+    searchFeedbackType.value = 'error'
+    searchFeedback.value = 'Location search is temporarily unavailable. Please try again later.'
+  }
   finally { clearTimeout(timer) }
 }
 
@@ -101,8 +136,15 @@ function selectLocation(loc) {
   selectedLocation.value = loc
   searchQuery.value = loc.name
   showDropdown.value = false
+  searchFeedback.value = null
   uvStatus.value = 'loading'
   fetchUvForLocation(loc.latitude, loc.longitude)
+}
+
+function backToCurrentLocation() {
+  showDropdown.value = false
+  searchResults.value = []
+  startUvFlow({ resetSelected: true })
 }
 
 function closeDropdown() { showDropdown.value = false }
@@ -231,33 +273,44 @@ onMounted(startUvFlow)
       <!-- Left column -->
       <div class="hero-dashboard__left">
         <!-- Search -->
-        <div class="hero-dashboard__search-wrap" role="combobox" :aria-expanded="showDropdown" aria-haspopup="listbox" aria-owns="location-listbox">
-          <svg class="hero-dashboard__search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
-          </svg>
-          <input
-            v-model="searchQuery"
-            type="text"
-            class="hero-dashboard__search"
-            placeholder="Search Location"
-            aria-label="Search location"
-            autocomplete="off"
-            @input="onSearchInput"
-            @focus="searchQuery && (showDropdown = true)"
-            @blur="delayCloseDropdown"
-          />
-          <ul v-if="showDropdown && searchResults.length" id="location-listbox" class="hero-dashboard__dropdown" role="listbox">
-            <li
-              v-for="(loc, idx) in searchResults"
-              :key="`${loc.name}-${loc.postcode}-${idx}`"
-              role="option"
-              class="hero-dashboard__dropdown-item"
-              @mousedown.prevent="selectLocation(loc)"
-            >
-              {{ loc.name }}, {{ loc.state }} {{ loc.postcode }}
-            </li>
-          </ul>
+        <div class="hero-dashboard__search-row">
+          <div class="hero-dashboard__search-wrap" role="combobox" :aria-expanded="showDropdown" aria-haspopup="listbox" aria-owns="location-listbox">
+            <svg class="hero-dashboard__search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="hero-dashboard__search"
+              placeholder="Search Location"
+              aria-label="Search location"
+              autocomplete="off"
+              @input="onSearchInput"
+              @focus="searchQuery && (showDropdown = true)"
+              @blur="delayCloseDropdown"
+            />
+            <ul v-if="showDropdown && searchResults.length" id="location-listbox" class="hero-dashboard__dropdown" role="listbox">
+              <li
+                v-for="(loc, idx) in searchResults"
+                :key="`${loc.name}-${loc.postcode}-${idx}`"
+                role="option"
+                class="hero-dashboard__dropdown-item"
+                @mousedown.prevent="selectLocation(loc)"
+              >
+                {{ loc.name }}, {{ loc.state }} {{ loc.postcode }}
+              </li>
+            </ul>
+          </div>
+          <button type="button" class="hero-dashboard__back-btn" @click="backToCurrentLocation">
+            Back to Current
+          </button>
         </div>
+        <p
+          v-if="searchFeedback"
+          :class="['hero-dashboard__search-feedback', `hero-dashboard__search-feedback--${searchFeedbackType}`]"
+        >
+          {{ searchFeedback }}
+        </p>
 
         <p v-if="coordinatesDisplay" class="hero-dashboard__coords">{{ coordinatesDisplay }}</p>
 
@@ -270,11 +323,13 @@ onMounted(startUvFlow)
 
         <!-- States -->
         <div v-if="uvStatus === 'loading'" class="hero-dashboard__state hero-dashboard__loading">Getting your location and UV data…</div>
-        <div v-else-if="uvStatus === 'denied'" class="hero-dashboard__state hero-dashboard__error">Location access is required to retrieve UV data.</div>
+        <div v-else-if="uvStatus === 'denied'" class="hero-dashboard__state hero-dashboard__error">
+          <p class="hero-dashboard__error-main">Location access was denied.</p>
+          <p class="hero-dashboard__error-detail">Please enable location permission or search for a city manually.</p>
+        </div>
         <div v-else-if="uvStatus === 'error'" class="hero-dashboard__state hero-dashboard__error">
-          <p class="hero-dashboard__error-main">Unable to retrieve UV data.</p>
-          <p v-if="uvError" class="hero-dashboard__error-detail">Make sure the backend is running (e.g. <code>cd backend && python app.py</code>) and using the same port as this app (default <code>http://localhost:5000</code>).</p>
-          <p v-else class="hero-dashboard__error-detail">Ensure the backend is running and reachable at <code>{{ apiBase }}</code>.</p>
+          <p class="hero-dashboard__error-main">Unable to retrieve UV data at the moment.</p>
+          <p class="hero-dashboard__error-detail">{{ uvError || 'Please try again later.' }}</p>
         </div>
 
         <!-- UV readings -->
@@ -351,10 +406,16 @@ onMounted(startUvFlow)
 }
 
 /* Search */
+.hero-dashboard__search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 .hero-dashboard__search-wrap {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1;
   background: #fff;
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 12px;
@@ -380,6 +441,37 @@ onMounted(startUvFlow)
   outline: none;
 }
 .hero-dashboard__search::placeholder { color: var(--uv-text-muted, #8A8A8A); }
+.hero-dashboard__back-btn {
+  border: 1px solid rgba(216, 97, 60, 0.35);
+  background: rgba(255, 255, 255, 0.85);
+  color: #B75233;
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+.hero-dashboard__back-btn:hover {
+  background: #fff;
+  border-color: rgba(216, 97, 60, 0.55);
+}
+.hero-dashboard__search-feedback {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+}
+.hero-dashboard__search-feedback--info {
+  color: #7A3E28;
+  background: rgba(216, 97, 60, 0.12);
+}
+.hero-dashboard__search-feedback--error {
+  color: #B42318;
+  background: rgba(180, 35, 24, 0.1);
+}
 
 /* Dropdown */
 .hero-dashboard__dropdown {

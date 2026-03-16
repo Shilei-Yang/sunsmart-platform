@@ -118,9 +118,15 @@ const protectionTips = [
 
 /* Top navigation */
 .homepage__header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
   padding: 1rem 1.5rem;
   background: var(--uv-bg);
   border-bottom: 1px solid var(--uv-grid);
+  z-index: 1200;
 }
 .homepage__header-inner {
   max-width: 1280px;
@@ -192,7 +198,7 @@ const protectionTips = [
   border-radius: 1px;
 }
 
-.homepage__main { padding: 2rem 1.5rem 3rem; }
+.homepage__main { padding: 7.5rem 1.5rem 3rem; }
 .homepage__container { max-width: 1280px; margin: 0 auto; }
 .homepage__hero { margin-bottom: 1.25rem; }
 
@@ -297,7 +303,7 @@ const protectionTips = [
 }
 
 @media (min-width: 900px) {
-  .homepage__main { padding: 2.5rem 2rem 3.5rem; }
+  .homepage__main { padding: 8rem 2rem 3.5rem; }
   .homepage__columns {
     flex-direction: row;
     align-items: flex-start;
