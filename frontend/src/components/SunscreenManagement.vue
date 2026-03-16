@@ -48,6 +48,63 @@ const dosageItems = [
   { area: 'Each leg', amount: '2 teaspoons' },
   { area: 'Torso & back', amount: '2 teaspoons' },
 ]
+
+const uvBand = computed(() => {
+  const uv = uvValue.value
+  if (uv == null) return 'unknown'
+  if (uv <= 2) return 'low'
+  if (uv <= 5) return 'moderate'
+  if (uv <= 7) return 'high'
+  if (uv <= 10) return 'veryHigh'
+  return 'extreme'
+})
+
+const dosageGuidance = computed(() => {
+  const base = {
+    intro: 'Apply approximately 35 ml (about a shot glass) of sunscreen to cover exposed skin.',
+    note: 'Use enough sunscreen to fully cover exposed areas.',
+  }
+  if (uvBand.value === 'unknown') {
+    return {
+      ...base,
+      reapplyEvery: '2 hours',
+      reapplyNote: 'Reapply after swimming, sweating, or towel drying.',
+    }
+  }
+  if (uvBand.value === 'low') {
+    return {
+      ...base,
+      reapplyEvery: '2 hours',
+      reapplyNote: 'Low UV now, but reapply if you stay outdoors for extended time.',
+    }
+  }
+  if (uvBand.value === 'moderate') {
+    return {
+      ...base,
+      reapplyEvery: '2 hours',
+      reapplyNote: 'Moderate UV: keep regular reapplication and use shade where possible.',
+    }
+  }
+  if (uvBand.value === 'high') {
+    return {
+      ...base,
+      reapplyEvery: '90 minutes',
+      reapplyNote: 'High UV: apply generously and avoid missing commonly exposed areas.',
+    }
+  }
+  if (uvBand.value === 'veryHigh') {
+    return {
+      ...base,
+      reapplyEvery: '60-90 minutes',
+      reapplyNote: 'Very high UV: pair sunscreen with hat, clothing, and shade.',
+    }
+  }
+  return {
+    ...base,
+    reapplyEvery: '60 minutes',
+    reapplyNote: 'Extreme UV: minimise direct sun exposure and reapply very frequently.',
+  }
+})
 </script>
 
 <template>
@@ -92,8 +149,9 @@ const dosageItems = [
       <div class="sunscreen__card sunscreen__card--glass">
         <h3 class="sunscreen__card-title">Sunscreen Dosage</h3>
         <p class="sunscreen__dosage-intro">
-          Apply approximately <strong>35 ml</strong> (about a shot glass) of sunscreen to cover exposed skin.
+          {{ dosageGuidance.intro }}
         </p>
+        <p class="sunscreen__dosage-note">{{ dosageGuidance.note }}</p>
         <ul class="sunscreen__dosage-list" role="list">
           <li
             v-for="item in dosageItems"
@@ -110,8 +168,9 @@ const dosageItems = [
       <div class="sunscreen__card sunscreen__card--glass">
         <h3 class="sunscreen__card-title">Reapplication</h3>
         <p class="sunscreen__reapply-text">
-          Reapply every <strong>2 hours</strong> when outdoors and after swimming or sweating.
+          Reapply every <strong>{{ dosageGuidance.reapplyEvery }}</strong> when outdoors.
         </p>
+        <p class="sunscreen__reapply-note">{{ dosageGuidance.reapplyNote }}</p>
       </div>
     </div>
   </section>
@@ -268,8 +327,11 @@ const dosageItems = [
   color: rgba(255, 255, 255, 0.8);
   line-height: 1.5;
 }
-.sunscreen__dosage-intro strong {
-  color: #ffb088;
+.sunscreen__dosage-note {
+  margin: -0.35rem 0 0.85rem;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.5;
 }
 .sunscreen__dosage-list {
   margin: 0;
@@ -304,6 +366,12 @@ const dosageItems = [
 }
 .sunscreen__reapply-text strong {
   color: #ffb088;
+}
+.sunscreen__reapply-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.5;
 }
 
 /* ── Mobile ── */

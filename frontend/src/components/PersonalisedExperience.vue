@@ -120,29 +120,26 @@ const selected = computed(() => fitzpatrick.find(t => t.id === selectedId.value)
 const currentUV = computed(() => {
   const raw = uvData.value?.current_uv ?? uvData.value?.uv_index
   const val = Number(raw)
-  return Number.isFinite(val) && val > 0 ? val : null
+  return Number.isFinite(val) && val >= 0 ? val : null
 })
 
 const uvLabel = computed(() => {
-  if (!currentUV.value) return null
+  if (currentUV.value === null) return null
   return `UV ${currentUV.value.toFixed(1)}`
 })
 
 function burnTime(type) {
-  if (!currentUV.value) return null
+  if (currentUV.value === null) return null
+  if (currentUV.value === 0) return Number.POSITIVE_INFINITY
   return Math.round(type.baseBurn * 6 / currentUV.value)
 }
 
-const hasUvData = computed(() => uvData.value != null)
-
 function burnTimeDisplay(type) {
   const mins = burnTime(type)
-  if (mins) {
-    if (mins >= 120) return `~${Math.round(mins / 60)} hrs`
-    return `~${mins} min`
-  }
-  if (hasUvData.value) return 'No UV risk right now'
-  return 'Enable location for estimate'
+  if (mins === null) return 'UV data unavailable'
+  if (!Number.isFinite(mins)) return '~No immediate burn risk'
+  if (mins >= 120) return `~${Math.round(mins / 60)} hrs`
+  return `~${mins} min`
 }
 
 function selectType(id) {
@@ -234,6 +231,9 @@ function selectType(id) {
     <div class="skin__compare uv-card">
       <span class="skin__eyebrow">How All Skin Types Compare</span>
       <h3 class="skin__compare-title">UV affects everyone differently</h3>
+      <p class="skin__compare-disclaimer">
+        Disclaimer: This section is for informational purposes only and does not replace professional medical advice.
+      </p>
       <p class="skin__subtext">
         Compare all six Fitzpatrick skin types to see how burn time and risk vary.
         <template v-if="selected">Your type is highlighted.</template>
@@ -504,6 +504,16 @@ function selectType(id) {
   font-size: 1.1875rem;
   font-weight: 700;
   color: var(--uv-text, #4A4A4A);
+}
+.skin__compare-disclaimer {
+  margin: 0 0 0.8rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #8a4a36;
+  background: rgba(216, 97, 60, 0.1);
+  border: 1px solid rgba(216, 97, 60, 0.2);
+  border-radius: 10px;
 }
 .skin__grid {
   display: grid;

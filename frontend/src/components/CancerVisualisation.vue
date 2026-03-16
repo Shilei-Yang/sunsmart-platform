@@ -242,8 +242,7 @@ const ageBarOptions = {
         aged 15–29 are diagnosed with melanoma.
       </h2>
       <p class="story__subtext">
-        That's <strong>{{ projLatest.count }} people</strong> estimated in {{ projLatest.year }} alone —
-        people your age, living your life.
+        That’s around 280 young Australians each year.
       </p>
     </div>
 
