@@ -3,6 +3,7 @@ UV routes: fetch UV index from Open-Meteo (no API key) and return risk level and
 Includes a simple in-memory cache and basic rate-limit handling for robustness.
 """
 import time
+import os
 import requests
 from datetime import date, datetime, timedelta
 from flask import Blueprint, current_app, jsonify, request
@@ -40,6 +41,7 @@ STALE_CACHE_MAX_AGE_SECONDS = 3600
 UV_CACHE_ROUND_PLACES = 1
 LOCATION_CACHE_ROUND_PLACES = 2
 LOG_RESPONSE_PREVIEW_CHARS = 220
+ENABLE_429_DEGRADED_RESPONSE = os.getenv("UV_ENABLE_429_DEGRADED_RESPONSE", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _make_cache_key(lat: float, lon: float, places: int = 2, include_history=None):
@@ -76,6 +78,38 @@ def _format_cache_key_for_log(key) -> str:
     if isinstance(key, tuple):
         return ",".join(str(part) for part in key)
     return str(key)
+
+
+def _return_503_with_log(reason: str, user_error: str, **fields):
+    """Return a 503 response with a precise diagnostic log reason."""
+    _log_uv_debug(f"returning 503 because {reason}", **fields)
+    return jsonify({"error": user_error}), 503
+
+
+def _build_degraded_uv_payload(lat: float, lon: float, reason: str) -> dict:
+    """Build a safe degraded payload when external UV service is rate-limited."""
+    today = date.today().isoformat()
+    return {
+        "status": "degraded",
+        "degraded": True,
+        "degraded_reason": reason,
+        "date": today,
+        "latitude": lat,
+        "longitude": lon,
+        "current_uv": None,
+        "current_risk_level": "Unavailable",
+        "current_color": "yellow",
+        "current_message": "Live UV data is temporarily busy. Showing limited data. Please try again shortly.",
+        "uv_index": 0.0,
+        "uv_index_clear_sky": 0.0,
+        "risk_level": "Unavailable",
+        "color": "yellow",
+        "message": "UV service is temporarily busy. Data shown is limited while the service recovers.",
+        "daily": [
+            {"date": today, "uv_index_max": 0.0},
+        ],
+        "history": [],
+    }
 
 
 def _get_cached_uv_with_meta(lat: float, lon: float, include_history: bool):
@@ -374,6 +408,8 @@ def get_uv():
         raw_lon=lon,
         normalized_key=_format_cache_key_for_log(normalized_uv_key),
         include_history=int(include_history),
+        pid=os.getpid(),
+        uv_cache_entries=len(UV_CACHE),
     )
 
     # If we have a fresh cached payload for this location, return it directly.
@@ -466,10 +502,24 @@ def get_uv():
                     stale_max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
                 )
                 return jsonify(stale_payload), 200
-            _log_uv_debug("returning 503: 429 without cache fallback")
-            return jsonify({
-                "error": "UV service is temporarily busy. Please try again in a few minutes."
-            }), 503
+            if ENABLE_429_DEGRADED_RESPONSE:
+                degraded_payload = _build_degraded_uv_payload(
+                    lat_f,
+                    lon_f,
+                    reason="429_no_fresh_or_stale_cache",
+                )
+                _log_uv_debug(
+                    "served degraded 200 payload after 429 without cache",
+                    normalized_key=_format_cache_key_for_log(normalized_uv_key),
+                    degraded_reason=degraded_payload.get("degraded_reason"),
+                )
+                return jsonify(degraded_payload), 200
+            return _return_503_with_log(
+                reason="429_and_no_fresh_or_stale_cache",
+                user_error="UV service is temporarily busy. Please try again in a few minutes.",
+                normalized_key=_format_cache_key_for_log(normalized_uv_key),
+                include_history=int(include_history),
+            )
 
         if response.status_code >= 400:
             _log_uv_debug(
