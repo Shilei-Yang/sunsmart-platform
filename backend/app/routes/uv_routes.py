@@ -4,6 +4,8 @@ Includes a simple in-memory cache and basic rate-limit handling for robustness.
 """
 import time
 import os
+import copy
+import threading
 import requests
 from datetime import date, datetime, timedelta
 from flask import Blueprint, current_app, jsonify, request
@@ -28,6 +30,12 @@ OPEN_METEO_ARCHIVE_URL = (
     "&start_date={start_date}&end_date={end_date}"
 )
 
+MAINTAINED_LOCATIONS = [
+    {"id": "melbourne", "name": "Melbourne", "state": "VIC", "latitude": -37.8136, "longitude": 144.9631},
+    {"id": "sydney", "name": "Sydney", "state": "NSW", "latitude": -33.8688, "longitude": 151.2093},
+    {"id": "brisbane", "name": "Brisbane", "state": "QLD", "latitude": -27.4698, "longitude": 153.0251},
+]
+
 # Simple in-memory cache for UV responses.
 # Key: (rounded_lat, rounded_lon)
 # Value: {"timestamp": float, "payload": dict}
@@ -43,6 +51,11 @@ LOCATION_CACHE_ROUND_PLACES = 2
 LOG_RESPONSE_PREVIEW_CHARS = 220
 OPEN_METEO_429_BACKOFF_SECONDS = int(os.getenv("UV_OPEN_METEO_429_BACKOFF_SECONDS", "45"))
 UV_PROVIDER_BACKOFF_UNTIL = {}
+MAINTAINED_UV_CACHE = {}
+MAINTAINED_REFRESH_INTERVAL_SECONDS = int(os.getenv("UV_MAINTAINED_REFRESH_INTERVAL_SECONDS", "420"))
+MAINTAINED_MAX_SERVE_AGE_SECONDS = int(os.getenv("UV_MAINTAINED_MAX_SERVE_AGE_SECONDS", "1800"))
+_UV_MAINTAINER_THREAD = None
+_UV_MAINTAINER_LOCK = threading.Lock()
 
 
 def _make_cache_key(lat: float, lon: float, places: int = 2, include_history=None):
@@ -96,6 +109,54 @@ def _is_provider_backoff_active(normalized_key: str):
         UV_PROVIDER_BACKOFF_UNTIL.pop(normalized_key, None)
         return False
     return True
+
+
+def _iso_utc_now():
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def _nearest_maintained_location(lat: float, lon: float):
+    nearest = None
+    nearest_dist = None
+    for loc in MAINTAINED_LOCATIONS:
+        dist = (loc["latitude"] - lat) ** 2 + (loc["longitude"] - lon) ** 2
+        if nearest_dist is None or dist < nearest_dist:
+            nearest_dist = dist
+            nearest = loc
+    return nearest, nearest_dist
+
+
+def _get_maintained_entry(loc_id: str):
+    return MAINTAINED_UV_CACHE.get(loc_id)
+
+
+def _get_maintained_payload_for_request(lat: float, lon: float, include_history: bool):
+    """
+    Return maintained UV payload for nearest supported city when fresh enough.
+    For include_history=1, skip maintained cache and keep existing live behavior.
+    """
+    if include_history:
+        return None
+    nearest, nearest_dist = _nearest_maintained_location(lat, lon)
+    if not nearest:
+        return None
+    entry = _get_maintained_entry(nearest["id"])
+    if not entry:
+        return None
+    ts = entry.get("timestamp")
+    payload = entry.get("payload")
+    if ts is None or payload is None:
+        MAINTAINED_UV_CACHE.pop(nearest["id"], None)
+        return None
+    age = time.time() - ts
+    if age > MAINTAINED_MAX_SERVE_AGE_SECONDS:
+        return None
+    out = copy.deepcopy(payload)
+    out["last_updated"] = out.get("last_updated") or _iso_utc_now()
+    out["data_source"] = "maintained_cache"
+    out["maintained_location_id"] = nearest["id"]
+    out["maintained_distance_sq"] = round(float(nearest_dist), 6)
+    return out
 
 
 def _get_cached_uv_with_meta(lat: float, lon: float, include_history: bool):
@@ -366,6 +427,200 @@ def uv_index_to_risk(uv_index):
     }
 
 
+def _build_uv_payload_from_forecast(
+    lat_f: float,
+    lon_f: float,
+    data: dict,
+    include_history: bool,
+    location_hint=None,
+    state_hint=None,
+):
+    daily = data.get("daily") or {}
+    times = daily.get("time") or []
+    uv_max = daily.get("uv_index_max") or []
+    uv_clear = daily.get("uv_index_clear_sky_max") or []
+
+    if not times or not uv_max:
+        raise ValueError("No daily UV data available for this location")
+
+    date_str = times[0]
+    uv_index_val = float(uv_max[0]) if uv_max[0] is not None else 0.0
+    uv_clear_val = float(uv_clear[0]) if (uv_clear and uv_clear[0] is not None) else uv_index_val
+    current_uv_val = _extract_current_uv(data)
+
+    risk = uv_index_to_risk(uv_index_val)
+    current_risk = uv_index_to_risk(current_uv_val) if current_uv_val is not None else None
+
+    daily_max_list = []
+    for i in range(min(7, len(times))):
+        val = uv_max[i] if i < len(uv_max) and uv_max[i] is not None else 0.0
+        daily_max_list.append({"date": times[i], "uv_index_max": float(val)})
+
+    history_list = []
+    if include_history:
+        try:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=6)
+            archive_url = OPEN_METEO_ARCHIVE_URL.format(
+                lat=lat_f,
+                lon=lon_f,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+            archive_res = requests.get(archive_url, timeout=ARCHIVE_TIMEOUT_SECONDS)
+            archive_res.raise_for_status()
+            archive_data = archive_res.json() or {}
+            archive_daily = archive_data.get("daily") or {}
+            archive_times = archive_daily.get("time") or []
+            archive_uv = archive_daily.get("uv_index_max") or []
+            for i in range(min(7, len(archive_times), len(archive_uv))):
+                uv_val = float(archive_uv[i]) if archive_uv[i] is not None else 0.0
+                d = date.fromisoformat(archive_times[i])
+                history_list.append({
+                    "date": archive_times[i],
+                    "label": d.strftime("%a"),
+                    "uv_index": uv_val,
+                })
+        except Exception:
+            history_list = []
+
+    if location_hint is not None or state_hint is not None:
+        location_name = location_hint
+        state = state_hint
+    else:
+        location_name, state = _get_nearest_location_name(lat_f, lon_f)
+    region = f"{state} / Australia" if state else None
+
+    payload = {
+        "status": "success",
+        "date": date_str,
+        "latitude": lat_f,
+        "longitude": lon_f,
+        "current_uv": current_uv_val,
+        "current_risk_level": current_risk["risk_level"] if current_risk else None,
+        "current_color": current_risk["color"] if current_risk else None,
+        "current_message": current_risk["message"] if current_risk else None,
+        "uv_index": uv_index_val,
+        "uv_index_clear_sky": uv_clear_val,
+        "risk_level": risk["risk_level"],
+        "color": risk["color"],
+        "message": risk["message"],
+        "daily": daily_max_list,
+        "history": history_list,
+        "last_updated": _iso_utc_now(),
+    }
+    if location_name is not None:
+        payload["location_name"] = location_name
+    if region is not None:
+        payload["region"] = region
+    return payload
+
+
+def _refresh_maintained_location(location_cfg: dict):
+    loc_id = location_cfg["id"]
+    lat_f = float(location_cfg["latitude"])
+    lon_f = float(location_cfg["longitude"])
+    normalized_key = _format_cache_key_for_log(
+        _make_cache_key(lat_f, lon_f, places=UV_CACHE_ROUND_PLACES, include_history=False)
+    )
+    if _is_provider_backoff_active(normalized_key):
+        _log_uv_debug(
+            "maintainer skipped due to provider backoff",
+            maintained_location_id=loc_id,
+            normalized_key=normalized_key,
+        )
+        return
+
+    url = OPEN_METEO_URL.format(lat=lat_f, lon=lon_f)
+    started_at = time.time()
+    try:
+        response = requests.get(url, timeout=(2.5, FORECAST_TIMEOUT_SECONDS))
+        elapsed_ms = int((time.time() - started_at) * 1000)
+        if response.status_code == 429:
+            UV_PROVIDER_BACKOFF_UNTIL[normalized_key] = time.time() + OPEN_METEO_429_BACKOFF_SECONDS
+            _log_uv_debug(
+                "maintainer got 429 from provider",
+                maintained_location_id=loc_id,
+                normalized_key=normalized_key,
+                elapsed_ms=elapsed_ms,
+                backoff_seconds=OPEN_METEO_429_BACKOFF_SECONDS,
+            )
+            return
+        response.raise_for_status()
+        data = response.json()
+        payload = _build_uv_payload_from_forecast(
+            lat_f=lat_f,
+            lon_f=lon_f,
+            data=data,
+            include_history=False,
+            location_hint=location_cfg["name"],
+            state_hint=location_cfg["state"],
+        )
+        payload["data_source"] = "maintained_refresh"
+        payload["maintained_location_id"] = loc_id
+        MAINTAINED_UV_CACHE[loc_id] = {"timestamp": time.time(), "payload": payload}
+        _set_cached_uv(lat_f, lon_f, payload, include_history=False)
+        UV_PROVIDER_BACKOFF_UNTIL.pop(normalized_key, None)
+        _log_uv_debug(
+            "maintainer refreshed location successfully",
+            maintained_location_id=loc_id,
+            normalized_key=normalized_key,
+            elapsed_ms=elapsed_ms,
+        )
+    except Exception as exc:
+        _log_uv_debug(
+            "maintainer refresh failed",
+            maintained_location_id=loc_id,
+            normalized_key=normalized_key,
+            error_type=type(exc).__name__,
+            error=_safe_preview(str(exc)),
+        )
+
+
+def _refresh_maintained_uv_once():
+    for location_cfg in MAINTAINED_LOCATIONS:
+        _refresh_maintained_location(location_cfg)
+
+
+def start_uv_maintainer(app):
+    """Start one background thread per process to refresh maintained UV cache."""
+    global _UV_MAINTAINER_THREAD
+    with _UV_MAINTAINER_LOCK:
+        if _UV_MAINTAINER_THREAD is not None and _UV_MAINTAINER_THREAD.is_alive():
+            return
+
+        # Flask dev reloader spawns two processes; start only in the serving child.
+        if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+            return
+
+        def _runner():
+            while True:
+                try:
+                    with app.app_context():
+                        _refresh_maintained_uv_once()
+                except Exception as exc:
+                    with app.app_context():
+                        _log_uv_debug(
+                            "maintainer loop error",
+                            error_type=type(exc).__name__,
+                            error=_safe_preview(str(exc)),
+                        )
+                time.sleep(max(30, MAINTAINED_REFRESH_INTERVAL_SECONDS))
+
+        _UV_MAINTAINER_THREAD = threading.Thread(
+            target=_runner,
+            name="uv-maintainer",
+            daemon=True,
+        )
+        _UV_MAINTAINER_THREAD.start()
+        with app.app_context():
+            _log_uv_debug(
+                "started uv maintainer thread",
+                refresh_interval_seconds=MAINTAINED_REFRESH_INTERVAL_SECONDS,
+                maintained_locations=",".join(loc["id"] for loc in MAINTAINED_LOCATIONS),
+            )
+
+
 @uv_bp.route("/api/uv", methods=["GET"])
 def get_uv():
     """GET /api/uv?lat=&lon= — Fetch UV from Open-Meteo, return risk and message."""
@@ -420,6 +675,22 @@ def get_uv():
             lon=round(lon_f, 4),
         )
         return jsonify(cached_payload), 200
+
+    maintained_payload = _get_maintained_payload_for_request(
+        lat=lat_f,
+        lon=lon_f,
+        include_history=include_history,
+    )
+    if maintained_payload is not None:
+        _log_uv_debug(
+            "served maintained uv payload",
+            include_history=int(include_history),
+            requested_lat=round(lat_f, 4),
+            requested_lon=round(lon_f, 4),
+            maintained_location_id=maintained_payload.get("maintained_location_id"),
+            last_updated=maintained_payload.get("last_updated"),
+        )
+        return jsonify(maintained_payload), 200
 
     # If this key was recently rate-limited, avoid repeatedly calling Open-Meteo.
     if _is_provider_backoff_active(_format_cache_key_for_log(normalized_uv_key)):
@@ -540,84 +811,15 @@ def get_uv():
         _log_uv_debug("invalid external forecast payload")
         return jsonify({"error": "Invalid response from UV service"}), 500
 
-    daily = data.get("daily") or {}
-    times = daily.get("time") or []
-    uv_max = daily.get("uv_index_max") or []
-    uv_clear = daily.get("uv_index_clear_sky_max") or []
-
-    if not times or not uv_max:
-        return jsonify({"error": "No daily UV data available for this location"}), 500
-
-    date_str = times[0]
-    uv_index_val = float(uv_max[0]) if uv_max[0] is not None else 0.0
-    uv_clear_val = float(uv_clear[0]) if (uv_clear and uv_clear[0] is not None) else uv_index_val
-    current_uv_val = _extract_current_uv(data)
-
-    risk = uv_index_to_risk(uv_index_val)
-    current_risk = uv_index_to_risk(current_uv_val) if current_uv_val is not None else None
-
-    # Build 7-day daily max UV for frontend max UV graph (bar chart)
-    daily_max_list = []
-    for i in range(min(7, len(times))):
-        val = uv_max[i] if i < len(uv_max) and uv_max[i] is not None else 0.0
-        daily_max_list.append({"date": times[i], "uv_index_max": float(val)})
-
-    # Past 7 days history is optional because archive lookup can noticeably
-    # increase response time. Frontend can request it via include_history=1.
-    history_list = []
-    if include_history:
-        try:
-            end_date = date.today()
-            start_date = end_date - timedelta(days=6)
-            archive_url = OPEN_METEO_ARCHIVE_URL.format(
-                lat=lat_f,
-                lon=lon_f,
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat(),
-            )
-            archive_res = requests.get(archive_url, timeout=ARCHIVE_TIMEOUT_SECONDS)
-            archive_res.raise_for_status()
-            archive_data = archive_res.json() or {}
-            archive_daily = archive_data.get("daily") or {}
-            archive_times = archive_daily.get("time") or []
-            archive_uv = archive_daily.get("uv_index_max") or []
-            for i in range(min(7, len(archive_times), len(archive_uv))):
-                uv_val = float(archive_uv[i]) if archive_uv[i] is not None else 0.0
-                d = date.fromisoformat(archive_times[i])
-                history_list.append({
-                    "date": archive_times[i],
-                    "label": d.strftime("%a"),
-                    "uv_index": uv_val,
-                })
-        except Exception:
-            history_list = []
-
-    # Resolve nearest location from DB for display (so frontend can show suburb name instead of "Your location").
-    location_name, state = _get_nearest_location_name(lat_f, lon_f)
-    region = f"{state} / Australia" if state else None
-
-    # Build final response payload (structure unchanged from previous implementation).
-    payload = {
-        "status": "success",
-        "date": date_str,
-        "latitude": lat_f,
-        "longitude": lon_f,
-        "current_uv": current_uv_val,
-        "current_risk_level": current_risk["risk_level"] if current_risk else None,
-        "current_color": current_risk["color"] if current_risk else None,
-        "current_message": current_risk["message"] if current_risk else None,
-        "uv_index": uv_index_val,
-        "uv_index_clear_sky": uv_clear_val,
-        "risk_level": risk["risk_level"],
-        "color": risk["color"],
-        "message": risk["message"],
-        "daily": daily_max_list,
-        "history": history_list,
-    }
-    if location_name is not None:
-        payload["location_name"] = location_name
-    if region is not None:
-        payload["region"] = region
+    try:
+        payload = _build_uv_payload_from_forecast(
+            lat_f=lat_f,
+            lon_f=lon_f,
+            data=data,
+            include_history=include_history,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 500
 
     # Store successful response in cache for this location.
     _set_cached_uv(lat_f, lon_f, payload, include_history=include_history)

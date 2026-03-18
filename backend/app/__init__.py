@@ -14,7 +14,7 @@ def create_app():
         return response
 
     # Register Router
-    from app.routes.uv_routes import uv_bp
+    from app.routes.uv_routes import start_uv_maintainer, uv_bp
     from app.routes.health_routes import health_bp
     from app.routes.weather_routes import weather_bp
     from app.routes.awareness_routes import awareness_bp
@@ -25,5 +25,8 @@ def create_app():
     app.register_blueprint(weather_bp)
     app.register_blueprint(awareness_bp)
     app.register_blueprint(location_bp)
+
+    # Maintain near-real-time UV data in background for core AU cities.
+    start_uv_maintainer(app)
 
     return app
