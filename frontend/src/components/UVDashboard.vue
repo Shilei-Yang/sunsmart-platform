@@ -20,34 +20,94 @@ const selectedLocation = ref(null)
 const searchFeedback = ref(null)
 const searchFeedbackType = ref('info')
 const isBackToCurrentLoading = ref(false)
+const isGeolocating = ref(false)
 
 let currentUvController = null
 let currentUvRequestId = 0
+let currentUvInFlightKey = null
+let lastStartedUvKey = null
+let lastStartedUvAt = 0
+
+const UV_COORD_DECIMALS = 3
+const UV_REQUEST_DEDUPE_WINDOW_MS = 1200
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function fetchUvForLocation(latitude, longitude) {
-  const url = `${apiBase}/api/uv?lat=${latitude}&lon=${longitude}&include_history=0`
+  const latNum = Number(latitude)
+  const lonNum = Number(longitude)
+  if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) {
+    uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
+    uvStatus.value = 'error'
+    uvData.value = null
+    return
+  }
+
+  // Normalize coordinates so nearby values map to one request/cache key.
+  const normalizedLat = Number(latNum.toFixed(UV_COORD_DECIMALS))
+  const normalizedLon = Number(lonNum.toFixed(UV_COORD_DECIMALS))
+  const requestKey = `${normalizedLat.toFixed(UV_COORD_DECIMALS)},${normalizedLon.toFixed(UV_COORD_DECIMALS)}`
+  const now = Date.now()
+
+  if (currentUvInFlightKey === requestKey) {
+    return
+  }
+  if (lastStartedUvKey === requestKey && now - lastStartedUvAt < UV_REQUEST_DEDUPE_WINDOW_MS) {
+    return
+  }
+
+  const url = `${apiBase}/api/uv?lat=${normalizedLat}&lon=${normalizedLon}&include_history=0`
   uvError.value = null
   currentUvRequestId += 1
   const requestId = currentUvRequestId
+  currentUvInFlightKey = requestKey
+  lastStartedUvKey = requestKey
+  lastStartedUvAt = now
 
   if (currentUvController) currentUvController.abort()
-  const maxAttempts = 3
+  const maxAttempts = 2
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const controller = new AbortController()
-    currentUvController = controller
-    const timer = setTimeout(() => controller.abort(), 15000)
-    try {
-      const res = await fetch(url, { signal: controller.signal })
-      if (requestId !== currentUvRequestId) return
+  try {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const controller = new AbortController()
+      currentUvController = controller
+      const timer = setTimeout(() => controller.abort(), 10000)
+      try {
+        const res = await fetch(url, { signal: controller.signal })
+        if (requestId !== currentUvRequestId) return
 
-      if (!res.ok) {
-        const retryable = [429, 502, 504].includes(res.status)
-        if (retryable && attempt < maxAttempts) {
+        if (!res.ok) {
+          const retryable = [429, 502, 504].includes(res.status)
+          if (retryable && attempt < maxAttempts) {
+            await sleep(attempt * 1000)
+            continue
+          }
+          uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
+          uvStatus.value = 'error'
+          uvData.value = null
+          return
+        }
+
+        const json = await res.json()
+        if (requestId !== currentUvRequestId) return
+        uvData.value = json
+        uvStatus.value = 'success'
+        return
+      } catch (err) {
+        if (requestId !== currentUvRequestId) return
+        if (err?.name === 'AbortError') {
+          if (attempt < maxAttempts) {
+            await sleep(attempt * 600)
+            continue
+          }
+          uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
+          uvStatus.value = 'error'
+          uvData.value = null
+          return
+        }
+        if (attempt < maxAttempts) {
           await sleep(attempt * 1000)
           continue
         }
@@ -55,30 +115,19 @@ async function fetchUvForLocation(latitude, longitude) {
         uvStatus.value = 'error'
         uvData.value = null
         return
+      } finally {
+        clearTimeout(timer)
       }
-
-      const json = await res.json()
-      if (requestId !== currentUvRequestId) return
-      uvData.value = json
-      uvStatus.value = 'success'
-      return
-    } catch {
-      if (requestId !== currentUvRequestId) return
-      if (attempt < maxAttempts) {
-        await sleep(attempt * 1000)
-        continue
-      }
-      uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
-      uvStatus.value = 'error'
-      uvData.value = null
-      return
-    } finally {
-      clearTimeout(timer)
+    }
+  } finally {
+    if (requestId === currentUvRequestId) {
+      currentUvInFlightKey = null
     }
   }
 }
 
 function startUvFlow({ resetSelected = false } = {}) {
+  if (isGeolocating.value) return
   if (resetSelected) {
     selectedLocation.value = null
     searchQuery.value = ''
@@ -91,22 +140,26 @@ function startUvFlow({ resetSelected = false } = {}) {
     uvError.value = 'Location access was denied. Please enable location permission or search for a city manually.'
     return
   }
+  isGeolocating.value = true
   navigator.geolocation.getCurrentPosition(
     (position) => {
       const { latitude, longitude } = position.coords
       fetchUvForLocation(latitude, longitude)
       isBackToCurrentLoading.value = false
+      isGeolocating.value = false
     },
     (err) => {
       if (err?.code === 1) {
         uvStatus.value = 'denied'
         uvError.value = 'Location access was denied. Please enable location permission or search for a city manually.'
         isBackToCurrentLoading.value = false
+        isGeolocating.value = false
         return
       }
       uvStatus.value = 'error'
       uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
       isBackToCurrentLoading.value = false
+      isGeolocating.value = false
     },
     { enableHighAccuracy: false, timeout: 8000, maximumAge: 900000 }
   )
