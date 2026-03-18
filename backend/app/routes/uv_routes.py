@@ -41,7 +41,8 @@ STALE_CACHE_MAX_AGE_SECONDS = 3600
 UV_CACHE_ROUND_PLACES = 1
 LOCATION_CACHE_ROUND_PLACES = 2
 LOG_RESPONSE_PREVIEW_CHARS = 220
-ENABLE_429_DEGRADED_RESPONSE = os.getenv("UV_ENABLE_429_DEGRADED_RESPONSE", "1").strip().lower() in {"1", "true", "yes", "on"}
+OPEN_METEO_429_BACKOFF_SECONDS = int(os.getenv("UV_OPEN_METEO_429_BACKOFF_SECONDS", "45"))
+UV_PROVIDER_BACKOFF_UNTIL = {}
 
 
 def _make_cache_key(lat: float, lon: float, places: int = 2, include_history=None):
@@ -86,30 +87,15 @@ def _return_503_with_log(reason: str, user_error: str, **fields):
     return jsonify({"error": user_error}), 503
 
 
-def _build_degraded_uv_payload(lat: float, lon: float, reason: str) -> dict:
-    """Build a safe degraded payload when external UV service is rate-limited."""
-    today = date.today().isoformat()
-    return {
-        "status": "degraded",
-        "degraded": True,
-        "degraded_reason": reason,
-        "date": today,
-        "latitude": lat,
-        "longitude": lon,
-        "current_uv": None,
-        "current_risk_level": "Unavailable",
-        "current_color": "yellow",
-        "current_message": "Live UV data is temporarily busy. Showing limited data. Please try again shortly.",
-        "uv_index": 0.0,
-        "uv_index_clear_sky": 0.0,
-        "risk_level": "Unavailable",
-        "color": "yellow",
-        "message": "UV service is temporarily busy. Data shown is limited while the service recovers.",
-        "daily": [
-            {"date": today, "uv_index_max": 0.0},
-        ],
-        "history": [],
-    }
+def _is_provider_backoff_active(normalized_key: str):
+    """Return True when we should avoid hammering Open-Meteo after recent 429."""
+    until_ts = UV_PROVIDER_BACKOFF_UNTIL.get(normalized_key)
+    if not until_ts:
+        return False
+    if time.time() >= until_ts:
+        UV_PROVIDER_BACKOFF_UNTIL.pop(normalized_key, None)
+        return False
+    return True
 
 
 def _get_cached_uv_with_meta(lat: float, lon: float, include_history: bool):
@@ -435,21 +421,27 @@ def get_uv():
         )
         return jsonify(cached_payload), 200
 
-    # Stability-first path: if stale cache exists, serve it immediately instead of
-    # waiting on an external request that may timeout or be rate-limited.
-    stale_payload = _get_stale_cached_uv(
-        lat_f,
-        lon_f,
-        include_history=include_history,
-        max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
-    )
-    if stale_payload is not None:
-        _log_uv_debug(
-            "served stale cache before external call",
-            normalized_key=_format_cache_key_for_log(normalized_uv_key),
-            stale_max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
+    # If this key was recently rate-limited, avoid repeatedly calling Open-Meteo.
+    if _is_provider_backoff_active(_format_cache_key_for_log(normalized_uv_key)):
+        stale_payload = _get_stale_cached_uv(
+            lat_f,
+            lon_f,
+            include_history=include_history,
+            max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
         )
-        return jsonify(stale_payload), 200
+        if stale_payload is not None:
+            _log_uv_debug(
+                "served stale cache during provider backoff window",
+                normalized_key=_format_cache_key_for_log(normalized_uv_key),
+                stale_max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
+            )
+            return jsonify(stale_payload), 200
+        return _return_503_with_log(
+            reason="provider_backoff_active_and_no_stale_cache",
+            user_error="UV service is temporarily busy. Please try again in a few minutes.",
+            normalized_key=_format_cache_key_for_log(normalized_uv_key),
+            include_history=int(include_history),
+        )
 
     url = OPEN_METEO_URL.format(lat=lat_f, lon=lon_f)
 
@@ -471,10 +463,14 @@ def get_uv():
 
         # If Open-Meteo rate limits us (HTTP 429), try to fall back to cached data.
         if response.status_code == 429:
+            UV_PROVIDER_BACKOFF_UNTIL[_format_cache_key_for_log(normalized_uv_key)] = (
+                time.time() + OPEN_METEO_429_BACKOFF_SECONDS
+            )
             _log_uv_debug(
                 "external rate-limited (429)",
                 response_preview=_safe_preview(response.text),
                 include_history=int(include_history),
+                backoff_seconds=OPEN_METEO_429_BACKOFF_SECONDS,
             )
             # Fresh cache fallback.
             cached_payload, cache_state, cache_age = _get_cached_uv_with_meta(
@@ -502,18 +498,6 @@ def get_uv():
                     stale_max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
                 )
                 return jsonify(stale_payload), 200
-            if ENABLE_429_DEGRADED_RESPONSE:
-                degraded_payload = _build_degraded_uv_payload(
-                    lat_f,
-                    lon_f,
-                    reason="429_no_fresh_or_stale_cache",
-                )
-                _log_uv_debug(
-                    "served degraded 200 payload after 429 without cache",
-                    normalized_key=_format_cache_key_for_log(normalized_uv_key),
-                    degraded_reason=degraded_payload.get("degraded_reason"),
-                )
-                return jsonify(degraded_payload), 200
             return _return_503_with_log(
                 reason="429_and_no_fresh_or_stale_cache",
                 user_error="UV service is temporarily busy. Please try again in a few minutes.",
@@ -531,6 +515,7 @@ def get_uv():
 
         response.raise_for_status()
         data = response.json()
+        UV_PROVIDER_BACKOFF_UNTIL.pop(_format_cache_key_for_log(normalized_uv_key), None)
     except requests.exceptions.RequestException as e:
         _log_uv_debug(
             "external forecast request exception",
