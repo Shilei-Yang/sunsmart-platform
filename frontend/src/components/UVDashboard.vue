@@ -46,7 +46,7 @@ async function fetchUvForLocation(latitude, longitude) {
       if (requestId !== currentUvRequestId) return
 
       if (!res.ok) {
-        const retryable = [429, 502, 503, 504].includes(res.status)
+        const retryable = [429, 502, 504].includes(res.status)
         if (retryable && attempt < maxAttempts) {
           await sleep(attempt * 1000)
           continue

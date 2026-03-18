@@ -5,7 +5,7 @@ Includes a simple in-memory cache and basic rate-limit handling for robustness.
 import time
 import requests
 from datetime import date, datetime, timedelta
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from database.db import get_connection
 
@@ -37,6 +37,9 @@ LOCATION_CACHE_TTL_SECONDS = 1800  # 30 minutes
 FORECAST_TIMEOUT_SECONDS = 8
 ARCHIVE_TIMEOUT_SECONDS = 4
 STALE_CACHE_MAX_AGE_SECONDS = 3600
+UV_CACHE_ROUND_PLACES = 1
+LOCATION_CACHE_ROUND_PLACES = 2
+LOG_RESPONSE_PREVIEW_CHARS = 220
 
 
 def _make_cache_key(lat: float, lon: float, places: int = 2, include_history=None):
@@ -47,32 +50,89 @@ def _make_cache_key(lat: float, lon: float, places: int = 2, include_history=Non
     return (base[0], base[1], 1 if include_history else 0)
 
 
-def _get_cached_uv(lat: float, lon: float, include_history: bool):
-    """Return cached UV payload for location if still fresh, otherwise None."""
-    key = _make_cache_key(lat, lon, include_history=include_history)
+def _log_uv_debug(message: str, **fields):
+    """Best-effort structured debug logging for /api/uv flow."""
+    try:
+        if fields:
+            parts = [f"{k}={v}" for k, v in sorted(fields.items())]
+            current_app.logger.info("[uv] %s | %s", message, " ".join(parts))
+        else:
+            current_app.logger.info("[uv] %s", message)
+    except Exception:
+        # Logging must never impact endpoint behavior.
+        return
+
+
+def _safe_preview(text, max_chars: int = LOG_RESPONSE_PREVIEW_CHARS):
+    if text is None:
+        return ""
+    compact = str(text).replace("\n", " ").replace("\r", " ").strip()
+    if len(compact) <= max_chars:
+        return compact
+    return compact[:max_chars] + "..."
+
+
+def _get_cached_uv_with_meta(lat: float, lon: float, include_history: bool):
+    """
+    Return (payload, state, age_seconds) where state is one of:
+    - hit
+    - miss
+    - invalid
+    - expired
+    """
+    key = _make_cache_key(
+        lat,
+        lon,
+        places=UV_CACHE_ROUND_PLACES,
+        include_history=include_history,
+    )
     entry = UV_CACHE.get(key)
     if not entry:
-        return None
+        return None, "miss", None
+
     ts = entry.get("timestamp")
     payload = entry.get("payload")
     if ts is None or payload is None:
-        return None
-    if time.time() - ts > CACHE_TTL_SECONDS:
-        # Expired entry; remove and treat as cache miss.
         UV_CACHE.pop(key, None)
-        return None
+        return None, "invalid", None
+
+    age_seconds = time.time() - ts
+    if age_seconds > CACHE_TTL_SECONDS:
+        UV_CACHE.pop(key, None)
+        return None, "expired", round(age_seconds, 3)
+
+    return payload, "hit", round(age_seconds, 3)
+
+
+def _get_cached_uv(lat: float, lon: float, include_history: bool):
+    """Return cached UV payload for location if still fresh, otherwise None."""
+    payload, _, _ = _get_cached_uv_with_meta(
+        lat,
+        lon,
+        include_history=include_history,
+    )
     return payload
 
 
 def _set_cached_uv(lat: float, lon: float, payload: dict, include_history: bool):
     """Store UV payload in cache for the given location."""
-    key = _make_cache_key(lat, lon, include_history=include_history)
+    key = _make_cache_key(
+        lat,
+        lon,
+        places=UV_CACHE_ROUND_PLACES,
+        include_history=include_history,
+    )
     UV_CACHE[key] = {"timestamp": time.time(), "payload": payload}
 
 
 def _get_stale_cached_uv(lat: float, lon: float, include_history: bool, max_age_seconds: int):
     """Return cached UV payload even if expired, up to max_age_seconds."""
-    key = _make_cache_key(lat, lon, include_history=include_history)
+    key = _make_cache_key(
+        lat,
+        lon,
+        places=UV_CACHE_ROUND_PLACES,
+        include_history=include_history,
+    )
     entry = UV_CACHE.get(key)
     if not entry:
         return None
@@ -88,7 +148,7 @@ def _get_stale_cached_uv(lat: float, lon: float, include_history: bool, max_age_
 
 def _get_cached_location(lat: float, lon: float):
     """Return cached nearest-location tuple (name, state) if fresh."""
-    key = _make_cache_key(lat, lon)
+    key = _make_cache_key(lat, lon, places=LOCATION_CACHE_ROUND_PLACES)
     entry = LOCATION_CACHE.get(key)
     if not entry:
         return None
@@ -101,7 +161,7 @@ def _get_cached_location(lat: float, lon: float):
 
 def _set_cached_location(lat: float, lon: float, name, state):
     """Store nearest-location tuple (name, state) in cache."""
-    key = _make_cache_key(lat, lon)
+    key = _make_cache_key(lat, lon, places=LOCATION_CACHE_ROUND_PLACES)
     LOCATION_CACHE[key] = {
         "timestamp": time.time(),
         "value": (name, state),
@@ -298,8 +358,26 @@ def get_uv():
     include_history = _parse_bool(request.args.get("include_history"), default=False)
 
     # If we have a fresh cached payload for this location, return it directly.
-    cached_payload = _get_cached_uv(lat_f, lon_f, include_history=include_history)
+    cached_payload, cache_state, cache_age = _get_cached_uv_with_meta(
+        lat_f,
+        lon_f,
+        include_history=include_history,
+    )
+    _log_uv_debug(
+        "cache check before external call",
+        cache_state=cache_state,
+        cache_age_seconds=cache_age,
+        include_history=int(include_history),
+        lat=round(lat_f, 4),
+        lon=round(lon_f, 4),
+    )
     if cached_payload is not None:
+        _log_uv_debug(
+            "cache hit served response",
+            include_history=int(include_history),
+            lat=round(lat_f, 4),
+            lon=round(lon_f, 4),
+        )
         return jsonify(cached_payload), 200
 
     url = OPEN_METEO_URL.format(lat=lat_f, lon=lon_f)
@@ -307,13 +385,52 @@ def get_uv():
     try:
         # Separate connect/read timeout to fail fast on network stalls while
         # still allowing moderate response time from Open-Meteo.
+        started_at = time.time()
         response = requests.get(url, timeout=(2.5, FORECAST_TIMEOUT_SECONDS))
+        elapsed_ms = int((time.time() - started_at) * 1000)
+        _log_uv_debug(
+            "external forecast response received",
+            status_code=response.status_code,
+            elapsed_ms=elapsed_ms,
+            include_history=int(include_history),
+            lat=round(lat_f, 4),
+            lon=round(lon_f, 4),
+        )
 
         # If Open-Meteo rate limits us (HTTP 429), try to fall back to cached data.
         if response.status_code == 429:
-            cached_payload = _get_cached_uv(lat_f, lon_f, include_history=include_history)
+            _log_uv_debug(
+                "external rate-limited (429)",
+                response_preview=_safe_preview(response.text),
+                include_history=int(include_history),
+            )
+            # Fresh cache fallback.
+            cached_payload, cache_state, cache_age = _get_cached_uv_with_meta(
+                lat_f,
+                lon_f,
+                include_history=include_history,
+            )
             if cached_payload is not None:
+                _log_uv_debug(
+                    "served fresh cache after 429",
+                    cache_state=cache_state,
+                    cache_age_seconds=cache_age,
+                )
                 return jsonify(cached_payload), 200
+            # Stale cache fallback to keep endpoint stable during temporary rate limits.
+            stale_payload = _get_stale_cached_uv(
+                lat_f,
+                lon_f,
+                include_history=include_history,
+                max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
+            )
+            if stale_payload is not None:
+                _log_uv_debug(
+                    "served stale cache after 429",
+                    stale_max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
+                )
+                return jsonify(stale_payload), 200
+            _log_uv_debug("returning 503: 429 without cache fallback")
             return jsonify({
                 "error": "UV service is temporarily busy. Please try again in a few minutes."
             }), 503
@@ -321,6 +438,12 @@ def get_uv():
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
+        _log_uv_debug(
+            "external forecast request exception",
+            error_type=type(e).__name__,
+            error=_safe_preview(str(e)),
+            include_history=int(include_history),
+        )
         stale_payload = _get_stale_cached_uv(
             lat_f,
             lon_f,
@@ -328,9 +451,14 @@ def get_uv():
             max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
         )
         if stale_payload is not None:
+            _log_uv_debug(
+                "served stale cache after request exception",
+                stale_max_age_seconds=STALE_CACHE_MAX_AGE_SECONDS,
+            )
             return jsonify(stale_payload), 200
         return jsonify({"error": f"Unable to fetch UV data from Open-Meteo: {str(e)}"}), 500
     except (ValueError, KeyError):
+        _log_uv_debug("invalid external forecast payload")
         return jsonify({"error": "Invalid response from UV service"}), 500
 
     daily = data.get("daily") or {}
@@ -414,5 +542,12 @@ def get_uv():
 
     # Store successful response in cache for this location.
     _set_cached_uv(lat_f, lon_f, payload, include_history=include_history)
+    _log_uv_debug(
+        "stored successful response in cache",
+        include_history=int(include_history),
+        cache_ttl_seconds=CACHE_TTL_SECONDS,
+        rounded_key_lat=round(lat_f, UV_CACHE_ROUND_PLACES),
+        rounded_key_lon=round(lon_f, UV_CACHE_ROUND_PLACES),
+    )
 
     return jsonify(payload), 200
