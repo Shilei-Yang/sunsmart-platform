@@ -144,11 +144,13 @@ function startUvFlow({ resetSelected = false } = {}) {
   navigator.geolocation.getCurrentPosition(
     (position) => {
       const { latitude, longitude } = position.coords
+      console.log('[UVDashboard] geolocation success:', { latitude, longitude })
       fetchUvForLocation(latitude, longitude)
       isBackToCurrentLoading.value = false
       isGeolocating.value = false
     },
     (err) => {
+      console.log('[UVDashboard] geolocation error:', err)
       if (err?.code === 1) {
         uvStatus.value = 'denied'
         uvError.value = 'Location access was denied. Please enable location permission or search for a city manually.'
