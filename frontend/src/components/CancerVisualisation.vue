@@ -241,9 +241,6 @@ const ageBarOptions = {
         Every week, <span class="story__accent">{{ perWeek }}</span> young Australians
         aged 15–29 are diagnosed with melanoma.
       </h2>
-      <p class="story__subtext">
-        That’s around 280 young Australians each year.
-      </p>
     </div>
 
     <!-- ━━ Chapter 2: The Good News ━━ -->
@@ -252,15 +249,9 @@ const ageBarOptions = {
         <span class="story__chapter-tag story__chapter-tag--green">The good news</span>
         <h3 class="story__chapter-title">Awareness works. It already saved thousands.</h3>
         <p class="story__chapter-text">
-          In <strong>{{ peakEntry.year }}</strong>, melanoma peaked at
-          <strong class="story__highlight story__highlight--red">{{ peakEntry.count }} cases</strong>
-          among 15–29 year-olds. Decades of sun-safety campaigns — Slip, Slop, Slap —
-          drove that number down by
-          <strong class="story__highlight story__highlight--green">{{ declinePercent }}%</strong>.
-        </p>
-        <p class="story__chapter-text">
-          The dashed line shows where we're heading. The trend is clear: <em>when people know the risk,
-          they change their behaviour.</em>
+          Cases down
+          <strong class="story__highlight story__highlight--green">{{ declinePercent }}%</strong>
+          since {{ peakEntry.year }}. Slip, Slop, Slap made the difference.
         </p>
       </div>
 
@@ -294,11 +285,6 @@ const ageBarOptions = {
       <h3 class="story__chapter-title">
         A tan isn't a sign of health — it's your skin crying for help.
       </h3>
-      <p class="story__chapter-text">
-        Despite the progress, social media is fuelling a dangerous reversal. The pursuit of a
-        "sun-kissed" look is undoing decades of awareness. Melanoma remains
-        <strong>one of the most common cancers</strong> diagnosed in young Australians.
-      </p>
 
       <div class="story__callout-grid">
         <div class="story__callout uv-card">
@@ -322,11 +308,6 @@ const ageBarOptions = {
       <h3 class="story__chapter-title">
         UV damage in your 20s shows up as cancer in your 40s, 50s and beyond.
       </h3>
-      <p class="story__chapter-text">
-        The chart below shows melanoma cases across all age groups. The bar for 15–29 may look
-        small — but that's where the damage <em>begins</em>. Every sunburn you get now is
-        compounding your lifetime risk.
-      </p>
 
       <div class="story__chart-card uv-card">
         <span class="story__chart-label">Melanoma cases by age group (2025 est.)</span>
@@ -340,8 +321,7 @@ const ageBarOptions = {
     <div class="story__cta">
       <h3 class="story__cta-title">This is why UVibe exists.</h3>
       <p class="story__cta-text">
-        We're not here to scare you. We're here to give you the information to make smarter
-        choices — so you can enjoy the Australian sun without paying for it later.
+        Enjoy the sun. Just do it smarter.
       </p>
       <div class="story__cta-actions">
         <button type="button" class="story__cta-pill" @click="navigateTo('uv-impacts')">Check today's UV</button>

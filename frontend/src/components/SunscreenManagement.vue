@@ -22,11 +22,11 @@ const riskColor = computed(() => data.value?.current_color ?? data.value?.color 
 const spfRecommendation = computed(() => {
   const uv = uvValue.value != null ? uvValue.value : null
   if (uv == null) return { spf: null, label: null, explanation: null }
-  if (uv <= 2) return { spf: '15+', label: 'Optional SPF 15+', explanation: 'UV is low. Sunscreen is optional; consider SPF 15+ for extended exposure.' }
-  if (uv <= 5) return { spf: '30+', label: 'SPF 30+', explanation: 'Moderate UV. Use broad-spectrum SPF 30+ when spending time outdoors.' }
-  if (uv <= 7) return { spf: '30–50+', label: 'SPF 30–50+', explanation: 'High UV. Use SPF 30–50+ and reapply regularly.' }
-  if (uv <= 10) return { spf: '50+', label: 'SPF 50+', explanation: 'Very high UV. Use SPF 50+ and other protection (hat, shade).' }
-  return { spf: '50+', label: 'SPF 50+', explanation: 'Extreme UV. Use SPF 50+ and minimise time in direct sun.' }
+  if (uv <= 2) return { spf: '15+', label: 'Optional SPF 15+', explanation: 'UV is low — SPF 15+ for extended time outdoors.' }
+  if (uv <= 5) return { spf: '30+', label: 'SPF 30+', explanation: 'Moderate UV — use broad-spectrum SPF 30+.' }
+  if (uv <= 7) return { spf: '30–50+', label: 'SPF 30–50+', explanation: 'High UV — SPF 30–50+, reapply regularly.' }
+  if (uv <= 10) return { spf: '50+', label: 'SPF 50+', explanation: 'Very high UV — SPF 50+ plus hat & shade.' }
+  return { spf: '50+', label: 'SPF 50+', explanation: 'Extreme UV — SPF 50+, minimise direct sun.' }
 })
 
 function uvColorToHex(color) {
@@ -61,48 +61,48 @@ const uvBand = computed(() => {
 
 const dosageGuidance = computed(() => {
   const base = {
-    intro: 'Apply approximately 35 ml (about a shot glass) of sunscreen to cover exposed skin.',
-    note: 'Use enough sunscreen to fully cover exposed areas.',
+    intro: 'Apply ~35 ml (a shot glass) to cover exposed skin.',
+    note: '',
   }
   if (uvBand.value === 'unknown') {
     return {
       ...base,
       reapplyEvery: '2 hours',
-      reapplyNote: 'Reapply after swimming, sweating, or towel drying.',
+      reapplyNote: 'Also reapply after swimming, sweating or towel drying.',
     }
   }
   if (uvBand.value === 'low') {
     return {
       ...base,
       reapplyEvery: '2 hours',
-      reapplyNote: 'Low UV now, but reapply if you stay outdoors for extended time.',
+      reapplyNote: 'Low UV — reapply if staying out for extended time.',
     }
   }
   if (uvBand.value === 'moderate') {
     return {
       ...base,
       reapplyEvery: '2 hours',
-      reapplyNote: 'Moderate UV: keep regular reapplication and use shade where possible.',
+      reapplyNote: 'Moderate UV — use shade where possible.',
     }
   }
   if (uvBand.value === 'high') {
     return {
       ...base,
       reapplyEvery: '90 minutes',
-      reapplyNote: 'High UV: apply generously and avoid missing commonly exposed areas.',
+      reapplyNote: 'High UV — apply generously, don\u2019t miss ears & neck.',
     }
   }
   if (uvBand.value === 'veryHigh') {
     return {
       ...base,
       reapplyEvery: '60-90 minutes',
-      reapplyNote: 'Very high UV: pair sunscreen with hat, clothing, and shade.',
+      reapplyNote: 'Very high UV — pair with hat, clothing & shade.',
     }
   }
   return {
     ...base,
     reapplyEvery: '60 minutes',
-    reapplyNote: 'Extreme UV: minimise direct sun exposure and reapply very frequently.',
+    reapplyNote: 'Extreme UV — minimise direct sun, reapply very frequently.',
   }
 })
 </script>
@@ -151,7 +151,7 @@ const dosageGuidance = computed(() => {
         <p class="sunscreen__dosage-intro">
           {{ dosageGuidance.intro }}
         </p>
-        <p class="sunscreen__dosage-note">{{ dosageGuidance.note }}</p>
+        <p v-if="dosageGuidance.note" class="sunscreen__dosage-note">{{ dosageGuidance.note }}</p>
         <ul class="sunscreen__dosage-list" role="list">
           <li
             v-for="item in dosageItems"

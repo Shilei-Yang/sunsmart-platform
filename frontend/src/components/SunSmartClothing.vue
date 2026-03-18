@@ -7,27 +7,27 @@ const essentials = [
   {
     icon: '👒',
     title: 'Wide-Brim Hat',
-    desc: 'Protects your face, ears, and neck. Choose a brim of at least 7.5 cm for proper coverage.',
+    desc: 'Shields face, ears & neck. Aim for 7.5 cm+ brim.',
   },
   {
     icon: '👕',
     title: 'UPF-Rated Clothing',
-    desc: 'Look for UPF 30+ or 50+ labels. These fabrics are tested to block harmful UV rays.',
+    desc: 'Look for UPF 30+ or 50+ labels on the tag.',
   },
   {
     icon: '🕶️',
     title: 'UV-Protective Sunglasses',
-    desc: 'Wraparound styles with UV400 protection shield your eyes and the sensitive skin around them.',
+    desc: 'Wraparound + UV400 protection for eyes and surrounding skin.',
   },
   {
     icon: '🧥',
     title: 'Long Sleeves & Pants',
-    desc: 'Lightweight, breathable fabrics keep you cool while covering more skin from UV exposure.',
+    desc: 'Lightweight, breathable fabrics that cover more skin.',
   },
   {
     icon: '⛱️',
     title: 'Seek Shade',
-    desc: 'Use trees, umbrellas, or shelters during peak UV hours (10 am to 4 pm) to reduce exposure.',
+    desc: 'Trees, umbrellas or shelters — especially 10 am to 4 pm.',
   },
 ]
 
@@ -50,9 +50,7 @@ const upfRatings = [
           Dress smart. <span class="clothing__accent">Stay protected.</span>
         </h2>
         <p class="clothing__hero-text">
-          Spending time outdoors is enjoyable, but UV radiation can damage the skin
-          and increase the risk of skin cancer. The right clothing is your first
-          line of defence.
+          The right clothing is your first line of defence against UV.
         </p>
       </div>
     </div>
@@ -88,8 +86,7 @@ const upfRatings = [
         <span class="clothing__eyebrow">Understanding UPF Ratings</span>
         <h3 class="clothing__section-title">Not all fabrics are equal</h3>
         <p class="clothing__upf-intro">
-          UPF (Ultraviolet Protection Factor) measures how much UV radiation a fabric allows
-          to reach your skin. A higher rating means better protection.
+          UPF measures how much UV a fabric blocks. Higher = better.
         </p>
         <div class="clothing__upf-ratings">
           <div
@@ -114,9 +111,7 @@ const upfRatings = [
         <span class="clothing__eyebrow">Did You Know?</span>
         <h3 class="clothing__section-title">Fabric colour and weave matter</h3>
         <p class="clothing__know-text">
-          Darker and tightly woven fabrics offer significantly better protection from UV rays
-          than light, loosely woven materials. A simple test: hold the fabric up to light.
-          If you can see through it, UV can get through it too.
+          Hold fabric up to light — if you can see through it, UV can get through it too.
         </p>
         <div class="clothing__know-tips">
           <div class="clothing__know-tip">
@@ -138,8 +133,8 @@ const upfRatings = [
     <!-- Bottom callout -->
     <div class="clothing__callout">
       <p class="clothing__callout-text">
-        <strong>Sun-smart clothing + sunscreen + shade = your best defence.</strong>
-        No single method blocks 100% of UV. Layer your protection for the safest time outdoors.
+        <strong>Clothing + sunscreen + shade = your best defence.</strong>
+        No single method blocks 100% of UV — layer up.
       </p>
     </div>
   </section>
