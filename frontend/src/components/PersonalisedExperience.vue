@@ -156,8 +156,7 @@ function selectType(id) {
         How does <span class="skin__accent">your skin</span> respond to UV?
       </h2>
       <p class="skin__subtext">
-        Not all skin reacts the same way to ultraviolet radiation.
-        Select the skin tone closest to yours and discover your personalised UV risk profile.
+        Select your skin tone to see your personalised UV risk profile.
       </p>
 
       <!-- Swatch picker -->
@@ -235,8 +234,7 @@ function selectType(id) {
         Disclaimer: This section is for informational purposes only and does not replace professional medical advice.
       </p>
       <p class="skin__subtext">
-        Compare all six Fitzpatrick skin types to see how burn time and risk vary.
-        <template v-if="selected">Your type is highlighted.</template>
+        Burn time and risk across all six skin types.<template v-if="selected"> Yours is highlighted.</template>
       </p>
 
       <div class="skin__grid">
@@ -265,7 +263,7 @@ function selectType(id) {
     <div class="skin__callout">
       <p class="skin__callout-text">
         <strong>All skin types can develop skin cancer.</strong>
-        Darker skin tones are often diagnosed later, making early awareness crucial for everyone.
+        Darker tones are often diagnosed later — early awareness matters for everyone.
       </p>
     </div>
   </section>
