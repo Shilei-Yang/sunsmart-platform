@@ -1,8 +1,14 @@
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed, inject, onUnmounted, watch } from 'vue'
 
 const uvData = inject('uvData', ref(null))
 const selectedId = ref(null)
+const selectedReminderMins = ref(60)
+const customReminderMins = ref('')
+const isCustomReminder = ref(false)
+const timerRemainingSec = ref(0)
+const timerRunning = ref(false)
+let timerInterval = null
 
 const fitzpatrick = [
   {
@@ -145,6 +151,112 @@ function burnTimeDisplay(type) {
 function selectType(id) {
   selectedId.value = selectedId.value === id ? null : id
 }
+
+const formattedTimer = computed(() => {
+  const total = Math.max(0, timerRemainingSec.value)
+  const mins = Math.floor(total / 60)
+  const secs = total % 60
+  return `${String(mins).padStart(2, '0')} : ${String(secs).padStart(2, '0')}`
+})
+
+const selectedBurnMins = computed(() => {
+  if (!selected.value) return null
+  const mins = burnTime(selected.value)
+  if (!Number.isFinite(mins) || mins === null || mins <= 0) return null
+  return mins
+})
+
+const reminderPresets = computed(() => {
+  const burnMins = selectedBurnMins.value
+  if (!burnMins) return [60, 70, 80]
+
+  // Keep reminders below burn time and provide practical spacing.
+  const p1 = Math.max(5, Math.round(burnMins * 0.5))
+  const p2 = Math.max(5, Math.round(burnMins * 0.7))
+  const p3 = Math.max(5, Math.round(burnMins * 0.9))
+  return [...new Set([p1, p2, p3])].sort((a, b) => a - b)
+})
+
+const recommendedReminderMins = computed(() => {
+  const presets = reminderPresets.value
+  if (!presets.length) return null
+  return presets[Math.floor(presets.length / 2)]
+})
+
+const reminderMins = computed(() => {
+  if (isCustomReminder.value) {
+    const parsed = Number(customReminderMins.value)
+    if (!Number.isFinite(parsed)) return 0
+    return Math.min(240, Math.max(5, Math.round(parsed)))
+  }
+  return selectedReminderMins.value
+})
+
+function clearReminderInterval() {
+  if (!timerInterval) return
+  clearInterval(timerInterval)
+  timerInterval = null
+}
+
+function runReminderTick() {
+  if (timerRemainingSec.value <= 0) {
+    clearReminderInterval()
+    timerRunning.value = false
+    return
+  }
+
+  timerInterval = setInterval(() => {
+    if (timerRemainingSec.value <= 1) {
+      timerRemainingSec.value = 0
+      timerRunning.value = false
+      clearReminderInterval()
+      return
+    }
+    timerRemainingSec.value -= 1
+  }, 1000)
+}
+
+function setPresetReminder(mins) {
+  isCustomReminder.value = false
+  selectedReminderMins.value = mins
+}
+
+function enableCustomReminder() {
+  isCustomReminder.value = true
+  if (!customReminderMins.value) {
+    customReminderMins.value = String(selectedReminderMins.value)
+  }
+}
+
+function startReminder() {
+  const mins = reminderMins.value
+  if (!mins) return
+  clearReminderInterval()
+  timerRemainingSec.value = mins * 60
+  timerRunning.value = true
+  runReminderTick()
+}
+
+function stopReminder() {
+  timerRunning.value = false
+  clearReminderInterval()
+}
+
+function resetReminder() {
+  stopReminder()
+  timerRemainingSec.value = 0
+}
+
+onUnmounted(() => {
+  clearReminderInterval()
+})
+
+watch(reminderPresets, (presets) => {
+  if (isCustomReminder.value) return
+  if (!presets.includes(selectedReminderMins.value)) {
+    selectedReminderMins.value = presets[presets.length - 1] ?? 60
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -222,6 +334,67 @@ function selectType(id) {
         <div class="skin__melanoma-note">
           <span class="skin__melanoma-icon" aria-hidden="true">⚠</span>
           <p>{{ selected.melanomaNotes }}</p>
+        </div>
+
+        <div class="skin__reminder">
+          <div class="skin__reminder-head">
+            <h4 class="skin__reminder-title">Set reminder</h4>
+            <span class="skin__reminder-subtitle">
+              {{ selectedBurnMins ? `Based on your ~${selectedBurnMins} min burn time` : 'Sunscreen reapplication timer' }}
+            </span>
+          </div>
+
+          <div class="skin__reminder-layout">
+            <div class="skin__reminder-controls">
+              <button
+                v-for="mins in reminderPresets"
+                :key="mins"
+                type="button"
+                class="skin__reminder-preset"
+                :class="{
+                  'skin__reminder-preset--active': !isCustomReminder && selectedReminderMins === mins,
+                  'skin__reminder-preset--recommended': mins === recommendedReminderMins,
+                }"
+                @click="setPresetReminder(mins)"
+              >
+                {{ mins }} mins
+                <span v-if="mins === recommendedReminderMins" class="skin__reminder-chip">Recommended</span>
+              </button>
+
+              <button
+                type="button"
+                class="skin__reminder-preset"
+                :class="{ 'skin__reminder-preset--active': isCustomReminder }"
+                @click="enableCustomReminder"
+              >
+                Custom
+              </button>
+
+              <input
+                v-if="isCustomReminder"
+                v-model="customReminderMins"
+                class="skin__reminder-input"
+                type="number"
+                min="5"
+                max="240"
+                placeholder="Minutes (5-240)"
+              />
+
+              <div class="skin__reminder-actions">
+                <button type="button" class="skin__reminder-btn skin__reminder-btn--start" @click="startReminder">Start</button>
+                <button type="button" class="skin__reminder-btn skin__reminder-btn--stop" @click="stopReminder">Stop</button>
+                <button type="button" class="skin__reminder-btn skin__reminder-btn--reset" @click="resetReminder">Reset</button>
+              </div>
+            </div>
+
+            <div class="skin__reminder-timer">
+              <span class="skin__reminder-timer-label">Timer</span>
+              <span class="skin__reminder-time">{{ formattedTimer }}</span>
+              <span class="skin__reminder-status">
+                {{ timerRunning ? 'Counting down...' : 'Ready' }}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </transition>
@@ -493,6 +666,146 @@ function selectType(id) {
   line-height: 1.55;
 }
 
+/* Reminder panel */
+.skin__reminder {
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--uv-grid, #E6E1DA);
+}
+.skin__reminder-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+  flex-wrap: wrap;
+}
+.skin__reminder-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--uv-text, #4A4A4A);
+}
+.skin__reminder-subtitle {
+  font-size: 0.75rem;
+  color: var(--uv-text-muted, #8A8A8A);
+}
+.skin__reminder-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 0.8rem;
+}
+.skin__reminder-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.skin__reminder-preset {
+  border: 1px solid var(--uv-grid, #E6E1DA);
+  background: #fff;
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--uv-text, #4A4A4A);
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.skin__reminder-preset--recommended {
+  border-style: dashed;
+  border-color: rgba(216, 97, 60, 0.45);
+  background: rgba(216, 97, 60, 0.03);
+}
+.skin__reminder-preset--active {
+  border-color: var(--uv-primary, #D8613C);
+  color: var(--uv-primary, #D8613C);
+  background: rgba(216, 97, 60, 0.06);
+}
+.skin__reminder-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #9f3f23;
+  background: rgba(216, 97, 60, 0.14);
+  white-space: nowrap;
+}
+.skin__reminder-input {
+  border: 1px solid var(--uv-grid, #E6E1DA);
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8125rem;
+  color: var(--uv-text, #4A4A4A);
+  background: #fff;
+}
+.skin__reminder-input:focus {
+  outline: 2px solid rgba(216, 97, 60, 0.2);
+  border-color: var(--uv-primary, #D8613C);
+}
+.skin__reminder-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+.skin__reminder-btn {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0.45rem 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.skin__reminder-btn--start {
+  background: rgba(58, 158, 92, 0.12);
+  border-color: rgba(58, 158, 92, 0.3);
+  color: #2f7f4a;
+}
+.skin__reminder-btn--stop {
+  background: rgba(212, 74, 74, 0.1);
+  border-color: rgba(212, 74, 74, 0.22);
+  color: #b13c3c;
+}
+.skin__reminder-btn--reset {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #475569;
+}
+.skin__reminder-timer {
+  border: 1px solid var(--uv-grid, #E6E1DA);
+  border-radius: 12px;
+  background: var(--uv-bg, #F4F1EC);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.75rem;
+}
+.skin__reminder-timer-label {
+  font-size: 0.72rem;
+  color: var(--uv-text-muted, #8A8A8A);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.skin__reminder-time {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--uv-primary, #D8613C);
+  line-height: 1.1;
+}
+.skin__reminder-status {
+  font-size: 0.72rem;
+  color: var(--uv-text-muted, #8A8A8A);
+}
+
 /* Comparison grid */
 .skin__compare {
   padding: 1.75rem 1.5rem;
@@ -656,6 +969,12 @@ function selectType(id) {
   }
   .skin__compare {
     padding: 1.25rem 1rem;
+  }
+  .skin__reminder-layout {
+    grid-template-columns: 1fr;
+  }
+  .skin__reminder-timer {
+    min-height: 96px;
   }
 }
 </style>
