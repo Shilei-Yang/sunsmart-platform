@@ -56,6 +56,7 @@ MAINTAINED_REFRESH_INTERVAL_SECONDS = int(os.getenv("UV_MAINTAINED_REFRESH_INTER
 MAINTAINED_MAX_SERVE_AGE_SECONDS = int(os.getenv("UV_MAINTAINED_MAX_SERVE_AGE_SECONDS", "1800"))
 _UV_MAINTAINER_THREAD = None
 _UV_MAINTAINER_LOCK = threading.Lock()
+_UV_MAINTAINER_HOOK_LOCK = threading.Lock()
 
 
 def _make_cache_key(lat: float, lon: float, places: int = 2, include_history=None):
@@ -589,14 +590,15 @@ def start_uv_maintainer(app):
         if _UV_MAINTAINER_THREAD is not None and _UV_MAINTAINER_THREAD.is_alive():
             return
 
-        # Flask dev reloader spawns two processes; start only in the serving child.
-        if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
-            return
-
         def _runner():
             while True:
                 try:
                     with app.app_context():
+                        _log_uv_debug(
+                            "maintainer loop tick",
+                            refresh_interval_seconds=MAINTAINED_REFRESH_INTERVAL_SECONDS,
+                            maintained_locations=",".join(loc["id"] for loc in MAINTAINED_LOCATIONS),
+                        )
                         _refresh_maintained_uv_once()
                 except Exception as exc:
                     with app.app_context():
@@ -615,10 +617,26 @@ def start_uv_maintainer(app):
         _UV_MAINTAINER_THREAD.start()
         with app.app_context():
             _log_uv_debug(
-                "started uv maintainer thread",
+                "maintainer thread started",
                 refresh_interval_seconds=MAINTAINED_REFRESH_INTERVAL_SECONDS,
                 maintained_locations=",".join(loc["id"] for loc in MAINTAINED_LOCATIONS),
             )
+
+
+def register_uv_maintainer_startup(app):
+    """
+    Register a per-worker startup hook so maintainer starts from request-serving context.
+    This is safer under Gunicorn/Render than running thread startup directly in create_app().
+    """
+    with _UV_MAINTAINER_HOOK_LOCK:
+        if app.config.get("_UV_MAINTAINER_STARTUP_HOOK_REGISTERED"):
+            return
+
+        @app.before_request
+        def _ensure_uv_maintainer_running():
+            start_uv_maintainer(app)
+
+        app.config["_UV_MAINTAINER_STARTUP_HOOK_REGISTERED"] = True
 
 
 @uv_bp.route("/api/uv", methods=["GET"])
