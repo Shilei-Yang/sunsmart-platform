@@ -5,7 +5,7 @@
   Skin types live on the Personalised Experience page. Backend /api/uv unchanged.
 -->
 <script setup>
-import { ref, provide } from 'vue'
+import { ref, provide, nextTick } from 'vue'
 import UVDashboard from '@/components/UVDashboard.vue'
 import UVImpacts from '@/components/UVImpacts.vue'
 import CancerVisualisation from '@/components/CancerVisualisation.vue'
@@ -20,6 +20,15 @@ const infoTab = ref('uv-impacts')
 const uvData = ref(null)
 provide('uvData', uvData)
 provide('infoTab', infoTab)
+
+async function switchInfoTab(tab) {
+  if (infoTab.value !== tab) {
+    infoTab.value = tab
+    // Wait for the new section to render before scrolling.
+    await nextTick()
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
 
 const protectionTips = [
   { text: 'Seek shade' },
@@ -45,11 +54,11 @@ const protectionTips = [
         </div>
         <nav class="homepage__nav" aria-label="Information sections">
           <div class="homepage__nav-track">
-            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'uv-impacts' }" @click="infoTab = 'uv-impacts'">Impact</button>
-            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'personalised' }" @click="infoTab = 'personalised'">Personalised Experience</button>
-            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'sunscreen' }" @click="infoTab = 'sunscreen'">Sunscreen Management</button>
-            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'clothing' }" @click="infoTab = 'clothing'">Sun-smart Clothing</button>
-            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'resources' }" @click="infoTab = 'resources'">Resources</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'uv-impacts' }" @click="switchInfoTab('uv-impacts')">Impact</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'personalised' }" @click="switchInfoTab('personalised')">Personalised Experience</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'sunscreen' }" @click="switchInfoTab('sunscreen')">Sunscreen Management</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'clothing' }" @click="switchInfoTab('clothing')">Sun-smart Clothing</button>
+            <button type="button" class="homepage__nav-tab" :class="{ 'homepage__nav-tab--active': infoTab === 'resources' }" @click="switchInfoTab('resources')">Resources</button>
           </div>
         </nav>
       </div>
