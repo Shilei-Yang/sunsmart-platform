@@ -37,6 +37,8 @@ const protectionTips = [
   { text: 'Sunglasses' },
   { text: 'Wide-brim hat' },
 ]
+
+const copyrightYear = new Date().getFullYear()
 </script>
 
 <template>
@@ -114,6 +116,14 @@ const protectionTips = [
         </div>
       </div>
     </main>
+
+    <footer class="homepage__footer" role="contentinfo">
+      <div class="homepage__footer-inner">
+        <p class="homepage__footer-text">
+          &copy; {{ copyrightYear }} UVibe. All rights reserved.
+        </p>
+      </div>
+    </footer>
   </div>
 </template>
 
@@ -327,6 +337,23 @@ const protectionTips = [
   border-radius: 16px;
   background: #fff;
   border: 2px dashed var(--uv-grid);
+}
+
+.homepage__footer {
+  padding: 1.5rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--uv-grid);
+  background: var(--uv-bg);
+}
+.homepage__footer-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  text-align: center;
+}
+.homepage__footer-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--uv-text-muted);
+  line-height: 1.5;
 }
 
 @media (min-width: 900px) {
