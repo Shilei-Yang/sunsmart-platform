@@ -73,7 +73,7 @@ function uvRiskMeta(uvIndex) {
   }
 }
 
-function buildBackupUvPayload(lat, lon, omData) {
+function buildBackupUvPayload(lat, lon, omData, locationFallback = null) {
   const daily = omData?.daily ?? {}
   const times = Array.isArray(daily?.time) ? daily.time : []
   const dailyMax = Array.isArray(daily?.uv_index_max) ? daily.uv_index_max : []
@@ -83,7 +83,7 @@ function buildBackupUvPayload(lat, lon, omData) {
   const currentMeta = currentUv === null ? null : uvRiskMeta(currentUv)
   const maxMeta = uvRiskMeta(uvIndexToday) ?? { risk_level: 'Unavailable', color: 'red', message: '' }
 
-  return {
+  const payload = {
     status: 'success',
     date: times?.[0] ?? new Date().toISOString().slice(0, 10),
     latitude: lat,
@@ -105,6 +105,9 @@ function buildBackupUvPayload(lat, lon, omData) {
     last_updated: new Date().toISOString(),
     data_source: 'backup_open_meteo',
   }
+  if (locationFallback?.location_name) payload.location_name = locationFallback.location_name
+  if (locationFallback?.region) payload.region = locationFallback.region
+  return payload
 }
 
 async function fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId) {
@@ -117,7 +120,16 @@ async function fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId)
     const backupJson = await backupRes.json()
     if (requestId !== currentUvRequestId) return true
     if (!backupJson || !backupJson.current || !backupJson.daily) return false
-    uvData.value = buildBackupUvPayload(normalizedLat, normalizedLon, backupJson)
+    const fallbackLocation = selectedLocation.value
+      ? {
+          location_name: selectedLocation.value.name,
+          region: `${selectedLocation.value.state} / ${selectedLocation.value.country || 'Australia'}`,
+        }
+      : {
+          location_name: uvData.value?.location_name ?? null,
+          region: uvData.value?.region ?? null,
+        }
+    uvData.value = buildBackupUvPayload(normalizedLat, normalizedLon, backupJson, fallbackLocation)
     uvStatus.value = 'success'
     uvError.value = null
     return true
@@ -363,17 +375,12 @@ const coordinatesDisplay = computed(() => {
 
 const locationName = computed(() => {
   if (selectedLocation.value) return selectedLocation.value.name
-  if (uvData.value?.location_name) return uvData.value.location_name
-  const lat = Number(uvData.value?.latitude)
-  const lon = Number(uvData.value?.longitude)
-  if (Number.isFinite(lat) && Number.isFinite(lon)) return `Lat ${lat.toFixed(2)}, Lon ${lon.toFixed(2)}`
-  return 'Your location'
+  return uvData.value?.location_name ?? 'Your location'
 })
 const regionDisplay = computed(() => {
   if (selectedLocation.value) return `${selectedLocation.value.state} / ${selectedLocation.value.country || 'Australia'}`
   return uvData.value?.region ?? '—'
 })
-const backupSourceActive = computed(() => uvData.value?.data_source === 'backup_open_meteo')
 const currentUvDisplay = computed(() => {
   const value = uvData.value?.current_uv
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
@@ -520,7 +527,6 @@ onMounted(startUvFlow)
         </div>
 
         <p class="hero-dashboard__datetime">{{ formattedDateTime }}</p>
-        <p v-if="backupSourceActive" class="hero-dashboard__backup-indicator">Using backup live UV source</p>
 
         <!-- States -->
         <div v-if="uvStatus === 'loading'" class="hero-dashboard__state hero-dashboard__loading">Getting your location and UV data…</div>
@@ -736,14 +742,6 @@ onMounted(startUvFlow)
   color: var(--uv-primary, #D8613C);
   letter-spacing: 0.01em;
 }
-.hero-dashboard__backup-indicator {
-  margin: 0.1rem 0 0;
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: #1d4ed8;
-}
-
 /* ─── UV cards ─── */
 .hero-dashboard__uv-card {
   width: 100%;
