@@ -111,6 +111,26 @@ function buildBackupUvPayload(lat, lon, omData, locationFallback = null) {
 }
 
 async function fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId) {
+  async function fetchNearestLocationFallback() {
+    const locationUrl = `${apiBase}/api/location-nearest?lat=${normalizedLat}&lon=${normalizedLon}`
+    const locationController = new AbortController()
+    const locationTimer = setTimeout(() => locationController.abort(), 5000)
+    try {
+      const locationRes = await fetch(locationUrl, { signal: locationController.signal })
+      if (!locationRes.ok) return null
+      const locationJson = await locationRes.json()
+      if (!locationJson || locationJson.error) return null
+      return {
+        location_name: locationJson.name ?? null,
+        region: locationJson.region ?? (locationJson.state ? `${locationJson.state} / Australia` : null),
+      }
+    } catch {
+      return null
+    } finally {
+      clearTimeout(locationTimer)
+    }
+  }
+
   const backupUrl = `https://api.open-meteo.com/v1/forecast?latitude=${normalizedLat}&longitude=${normalizedLon}&current=uv_index&daily=uv_index_max&timezone=auto`
   const backupController = new AbortController()
   const backupTimer = setTimeout(() => backupController.abort(), 10000)
@@ -120,15 +140,18 @@ async function fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId)
     const backupJson = await backupRes.json()
     if (requestId !== currentUvRequestId) return true
     if (!backupJson || !backupJson.current || !backupJson.daily) return false
-    const fallbackLocation = selectedLocation.value
-      ? {
-          location_name: selectedLocation.value.name,
-          region: `${selectedLocation.value.state} / ${selectedLocation.value.country || 'Australia'}`,
-        }
-      : {
-          location_name: uvData.value?.location_name ?? null,
-          region: uvData.value?.region ?? null,
-        }
+    const backendNearest = await fetchNearestLocationFallback()
+    const fallbackLocation = backendNearest ?? (
+      selectedLocation.value
+        ? {
+            location_name: selectedLocation.value.name,
+            region: `${selectedLocation.value.state} / ${selectedLocation.value.country || 'Australia'}`,
+          }
+        : {
+            location_name: uvData.value?.location_name ?? null,
+            region: uvData.value?.region ?? null,
+          }
+    )
     uvData.value = buildBackupUvPayload(normalizedLat, normalizedLon, backupJson, fallbackLocation)
     uvStatus.value = 'success'
     uvError.value = null

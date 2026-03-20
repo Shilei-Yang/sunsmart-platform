@@ -9,6 +9,8 @@ from database.db import get_connection
 location_bp = Blueprint("location_bp", __name__)
 SEARCH_CACHE = {}
 SEARCH_CACHE_TTL_SECONDS = 120  # 2 minutes
+NEAREST_CACHE = {}
+NEAREST_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
 def _get_cached_search(query: str):
@@ -29,6 +31,31 @@ def _set_cached_search(query: str, results):
     SEARCH_CACHE[query] = {
         "timestamp": time.time(),
         "results": results,
+    }
+
+
+def _nearest_cache_key(lat: float, lon: float):
+    return (round(float(lat), 2), round(float(lon), 2))
+
+
+def _get_cached_nearest(lat: float, lon: float):
+    key = _nearest_cache_key(lat, lon)
+    entry = NEAREST_CACHE.get(key)
+    if not entry:
+        return None
+    ts = entry.get("timestamp")
+    value = entry.get("value")
+    if ts is None or value is None or time.time() - ts > NEAREST_CACHE_TTL_SECONDS:
+        NEAREST_CACHE.pop(key, None)
+        return None
+    return value
+
+
+def _set_cached_nearest(lat: float, lon: float, value):
+    key = _nearest_cache_key(lat, lon)
+    NEAREST_CACHE[key] = {
+        "timestamp": time.time(),
+        "value": value,
     }
 
 
@@ -109,3 +136,59 @@ def location_search():
 
     _set_cached_search(query_lower, results)
     return jsonify(results), 200
+
+
+@location_bp.route("/api/location-nearest", methods=["GET"])
+def location_nearest():
+    """
+    Resolve nearest known AU location for given coordinates.
+
+    Query parameters:
+    - lat: latitude (required)
+    - lon: longitude (required)
+    """
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
+    if lat is None or lat == "" or lon is None or lon == "":
+        return jsonify({"error": "lat and lon query parameters are required"}), 400
+
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+    except (ValueError, TypeError):
+        return jsonify({"error": "lat and lon must be valid numbers"}), 400
+
+    cached = _get_cached_nearest(lat_f, lon_f)
+    if cached is not None:
+        return jsonify(cached), 200
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT suburb, state, postcode, latitude, longitude
+                    FROM location
+                    ORDER BY (latitude - %s) * (latitude - %s) + (longitude - %s) * (longitude - %s)
+                    LIMIT 1;
+                    """,
+                    (lat_f, lat_f, lon_f, lon_f),
+                )
+                row = cur.fetchone()
+    except Exception as exc:  # pragma: no cover - defensive
+        return jsonify({"error": f"Database error while resolving nearest location: {exc}"}), 500
+
+    if not row:
+        return jsonify({"error": "No nearby location found"}), 404
+
+    result = {
+        "name": row["suburb"],
+        "state": row["state"],
+        "country": "Australia",
+        "region": f'{row["state"]} / Australia' if row.get("state") else None,
+        "latitude": row["latitude"],
+        "longitude": row["longitude"],
+        "postcode": str(row["postcode"]) if row.get("postcode") is not None else None,
+    }
+    _set_cached_nearest(lat_f, lon_f, result)
+    return jsonify(result), 200
