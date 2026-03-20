@@ -157,6 +157,18 @@ def _get_maintained_payload_for_request(lat: float, lon: float, include_history:
     out["data_source"] = "maintained_cache"
     out["maintained_location_id"] = nearest["id"]
     out["maintained_distance_sq"] = round(float(nearest_dist), 6)
+    # Keep UV values from maintained cache, but keep geo display tied to user's request.
+    out["latitude"] = lat
+    out["longitude"] = lon
+    location_name, state = _get_nearest_location_name(lat, lon)
+    if location_name is not None:
+        out["location_name"] = location_name
+    else:
+        out.pop("location_name", None)
+    if state is not None:
+        out["region"] = f"{state} / Australia"
+    else:
+        out.pop("region", None)
     return out
 
 
