@@ -35,6 +35,99 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function uvRiskMeta(uvIndex) {
+  const uv = Number(uvIndex)
+  if (!Number.isFinite(uv)) return null
+  if (uv <= 2) {
+    return {
+      risk_level: 'Low',
+      color: 'green',
+      message: 'UV levels are low. Minimal sun protection is required. You can stay outdoors safely, but sunglasses are recommended.',
+    }
+  }
+  if (uv <= 5) {
+    return {
+      risk_level: 'Moderate',
+      color: 'yellow',
+      message: 'Moderate UV levels. Consider wearing sunscreen, sunglasses, and a hat if you are outside for an extended period.',
+    }
+  }
+  if (uv <= 7) {
+    return {
+      risk_level: 'High',
+      color: 'orange',
+      message: 'High UV levels. Your skin may begin to burn within 20 to 30 minutes. Apply SPF 30+ sunscreen and seek shade.',
+    }
+  }
+  if (uv <= 10) {
+    return {
+      risk_level: 'Very High',
+      color: 'red',
+      message: 'Very high UV levels. Skin may burn quickly. Use SPF 50+, wear protective clothing, and limit sun exposure.',
+    }
+  }
+  return {
+    risk_level: 'Extreme',
+    color: 'purple',
+    message: 'Extreme UV levels. Skin damage can occur very quickly. Avoid direct sun exposure and stay in shade whenever possible.',
+  }
+}
+
+function buildBackupUvPayload(lat, lon, omData) {
+  const daily = omData?.daily ?? {}
+  const times = Array.isArray(daily?.time) ? daily.time : []
+  const dailyMax = Array.isArray(daily?.uv_index_max) ? daily.uv_index_max : []
+  const currentUvRaw = omData?.current?.uv_index
+  const currentUv = Number.isFinite(Number(currentUvRaw)) ? Number(currentUvRaw) : null
+  const uvIndexToday = Number.isFinite(Number(dailyMax?.[0])) ? Number(dailyMax[0]) : 0
+  const currentMeta = currentUv === null ? null : uvRiskMeta(currentUv)
+  const maxMeta = uvRiskMeta(uvIndexToday) ?? { risk_level: 'Unavailable', color: 'red', message: '' }
+
+  return {
+    status: 'success',
+    date: times?.[0] ?? new Date().toISOString().slice(0, 10),
+    latitude: lat,
+    longitude: lon,
+    current_uv: currentUv,
+    current_risk_level: currentMeta?.risk_level ?? null,
+    current_color: currentMeta?.color ?? null,
+    current_message: currentMeta?.message ?? null,
+    uv_index: uvIndexToday,
+    uv_index_clear_sky: uvIndexToday,
+    risk_level: maxMeta.risk_level,
+    color: maxMeta.color,
+    message: maxMeta.message,
+    daily: times.slice(0, 7).map((d, i) => ({
+      date: d,
+      uv_index_max: Number.isFinite(Number(dailyMax?.[i])) ? Number(dailyMax[i]) : 0,
+    })),
+    history: [],
+    last_updated: new Date().toISOString(),
+    data_source: 'backup_open_meteo',
+  }
+}
+
+async function fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId) {
+  const backupUrl = `https://api.open-meteo.com/v1/forecast?latitude=${normalizedLat}&longitude=${normalizedLon}&current=uv_index&daily=uv_index_max&timezone=auto`
+  const backupController = new AbortController()
+  const backupTimer = setTimeout(() => backupController.abort(), 10000)
+  try {
+    const backupRes = await fetch(backupUrl, { signal: backupController.signal })
+    if (!backupRes.ok) return false
+    const backupJson = await backupRes.json()
+    if (requestId !== currentUvRequestId) return true
+    if (!backupJson || !backupJson.current || !backupJson.daily) return false
+    uvData.value = buildBackupUvPayload(normalizedLat, normalizedLon, backupJson)
+    uvStatus.value = 'success'
+    uvError.value = null
+    return true
+  } catch {
+    return false
+  } finally {
+    clearTimeout(backupTimer)
+  }
+}
+
 async function fetchUvForLocation(latitude, longitude) {
   const latNum = Number(latitude)
   const lonNum = Number(longitude)
@@ -84,6 +177,7 @@ async function fetchUvForLocation(latitude, longitude) {
             await sleep(attempt * 1000)
             continue
           }
+          if (await fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId)) return
           uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
           uvStatus.value = 'error'
           uvData.value = null
@@ -92,6 +186,13 @@ async function fetchUvForLocation(latitude, longitude) {
 
         const json = await res.json()
         if (requestId !== currentUvRequestId) return
+        if (json?.error) {
+          if (await fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId)) return
+          uvError.value = json.error || 'Unable to retrieve UV data at the moment. Please try again later.'
+          uvStatus.value = 'error'
+          uvData.value = null
+          return
+        }
         uvData.value = json
         uvStatus.value = 'success'
         return
@@ -102,6 +203,7 @@ async function fetchUvForLocation(latitude, longitude) {
             await sleep(attempt * 600)
             continue
           }
+          if (await fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId)) return
           uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
           uvStatus.value = 'error'
           uvData.value = null
@@ -111,6 +213,7 @@ async function fetchUvForLocation(latitude, longitude) {
           await sleep(attempt * 1000)
           continue
         }
+        if (await fetchBackupUvForLocation(normalizedLat, normalizedLon, requestId)) return
         uvError.value = 'Unable to retrieve UV data at the moment. Please try again later.'
         uvStatus.value = 'error'
         uvData.value = null
@@ -260,12 +363,17 @@ const coordinatesDisplay = computed(() => {
 
 const locationName = computed(() => {
   if (selectedLocation.value) return selectedLocation.value.name
-  return uvData.value?.location_name ?? 'Your location'
+  if (uvData.value?.location_name) return uvData.value.location_name
+  const lat = Number(uvData.value?.latitude)
+  const lon = Number(uvData.value?.longitude)
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return `Lat ${lat.toFixed(2)}, Lon ${lon.toFixed(2)}`
+  return 'Your location'
 })
 const regionDisplay = computed(() => {
   if (selectedLocation.value) return `${selectedLocation.value.state} / ${selectedLocation.value.country || 'Australia'}`
   return uvData.value?.region ?? '—'
 })
+const backupSourceActive = computed(() => uvData.value?.data_source === 'backup_open_meteo')
 const currentUvDisplay = computed(() => {
   const value = uvData.value?.current_uv
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
@@ -412,6 +520,7 @@ onMounted(startUvFlow)
         </div>
 
         <p class="hero-dashboard__datetime">{{ formattedDateTime }}</p>
+        <p v-if="backupSourceActive" class="hero-dashboard__backup-indicator">Using backup live UV source</p>
 
         <!-- States -->
         <div v-if="uvStatus === 'loading'" class="hero-dashboard__state hero-dashboard__loading">Getting your location and UV data…</div>
@@ -626,6 +735,13 @@ onMounted(startUvFlow)
   font-size: 0.8125rem; font-weight: 600;
   color: var(--uv-primary, #D8613C);
   letter-spacing: 0.01em;
+}
+.hero-dashboard__backup-indicator {
+  margin: 0.1rem 0 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #1d4ed8;
 }
 
 /* ─── UV cards ─── */
