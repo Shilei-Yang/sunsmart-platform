@@ -283,7 +283,7 @@ const ageBarOptions = {
     <div class="story__chapter">
       <span class="story__chapter-tag story__chapter-tag--amber">But here's the catch</span>
       <h3 class="story__chapter-title">
-        A tan isn't a sign of health — it's your skin crying for help.
+        A tan isn't a sign of health - it's your skin crying for help.
       </h3>
 
       <div class="story__callout-grid">
@@ -296,7 +296,7 @@ const ageBarOptions = {
         <div class="story__callout uv-card">
           <span class="story__callout-number story__callout-number--pink">{{ femalePercent }}%</span>
           <span class="story__callout-desc">
-            of cases are young women — the demographic most influenced by tanning trends
+            of cases are young women - the demographic most influenced by tanning trends
           </span>
         </div>
       </div>
